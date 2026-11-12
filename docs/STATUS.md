@@ -17,7 +17,7 @@ Current milestone: M1b control plane, preview 0.3.0. No system VPN yet.
 - Current local Windows: 19 Rust tests passed (10 core, 3 engine, 3 protocol, 2 real pipe integration, 1 DPAPI); Clippy with warnings denied passed.
 - Five Playwright scenarios and TypeScript/Vite build passed.
 - Console process/pipe integration covers health, first-instance protection, wrong version, oversized request, recovery, invalid profile and rejection of a fake peer before credentials are written. PowerShell scripts parse successfully.
-- Real SCM install/start/authenticated health/stop/restart/remove added to disposable Windows CI only. Current commit SCM/CI result must be recorded after publishing.
+- Implementation bd45fc2: Windows and Linux CI both passed, including real SCM install/start/stop/restart/removal and authenticated access from a separate non-administrator account: https://github.com/Bu11t0N/Moth-Desktop/actions/runs/43240293250
 - No service was installed and no network settings changed on the developer host.
 - Native WebView2 live-window/DPI/accessibility checks remain pending; previous automation app-launch approval timed out. Browser UI tests are not native visual acceptance.
 
@@ -25,7 +25,7 @@ Current milestone: M1b control plane, preview 0.3.0. No system VPN yet.
 
 1. Interface discovery and upstream socket/route exclusion, then actual TUN/DNS in a VM.
 2. Per-user connection ownership, lifecycle/recovery policy and OS kill switch.
-3. Non-admin/multiple-session and low-integrity/AppContainer acceptance; security review.
+3. Native GUI acceptance as a standard user, multiple-session and low-integrity/AppContainer tests; security review.
 4. HTTPS subscriptions, Android backups, tray and signed installer/update policy.
 5. Linux daemon/transport/secret storage. Protocol/domain/engine logic remains portable.
 
