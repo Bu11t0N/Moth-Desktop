@@ -1,9 +1,11 @@
 {
   "name": "moth-desktop",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
+    "engines:fetch": "node scripts/fetch-engines.mjs",
+    "engines:test": "cargo test -p moth-engine --locked -- --include-ignored",
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
     "tauri": "tauri",

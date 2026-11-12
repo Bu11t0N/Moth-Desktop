@@ -1,11 +1,13 @@
 import "./style.css";
-import { call, empty, native, type Snapshot } from "./api";
+import { call, empty, native, probe, type Snapshot } from "./api";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
 let state: Snapshot = structuredClone(empty);
 let page: "home" | "servers" | "settings" = "home";
 let busy = false;
 let error = "";
+const probeResults = new Map<string, string>();
+let probingId: string | null = null;
 
 const icons = {
   home: '<path d="m3 11 9-8 9 8M5 10v10h5v-6h4v6h5V10"/>',
@@ -46,9 +48,9 @@ function render() {
             `<button class="nav-item ${page === key ? "active" : ""}" data-page="${key}" ${page === key ? 'aria-current="page"' : ""}>${icon(key)}${title}${key === "servers" ? `<span class="count">${state.profiles.length}</span>` : ""}</button>`,
         )
         .join("")}</nav>
-      <div class="sidebar-bottom"><span class="version-dot"></span> Версия для разработки<small>0.1.0 · Windows first</small></div>
+      <div class="sidebar-bottom"><span class="version-dot"></span> Версия для разработки<small>0.2.0 · Windows first</small></div>
     </aside>
-    <main><header><div class="breadcrumb">ЛИЧНОЕ ПРОСТРАНСТВО <span>/</span> ${page === "home" ? "ОБЗОР" : page === "servers" ? "СЕРВЕРЫ" : "НАСТРОЙКИ"}</div><span class="build-badge">PREVIEW 01</span></header>
+    <main><header><div class="breadcrumb">ЛИЧНОЕ ПРОСТРАНСТВО <span>/</span> ${page === "home" ? "ОБЗОР" : page === "servers" ? "СЕРВЕРЫ" : "НАСТРОЙКИ"}</div><span class="build-badge">PREVIEW 02</span></header>
     ${!native ? '<div class="preview-note">Просмотр интерфейса в браузере. Профили и подключение доступны только в настольном приложении.</div>' : ""}
     ${error ? `<div class="error" role="alert">${escapeHtml(error)}</div>` : ""}
     <section class="content">
@@ -69,11 +71,11 @@ function render() {
         : page === "servers"
           ? `
       <div class="page-heading"><div><p class="eyebrow">ТВОИ МАРШРУТЫ</p><h1>Серверы</h1><p class="muted">VLESS и Trojan · ссылки и Base64-списки</p></div><button class="button" data-import>${icon("plus")} Добавить сервер</button></div>
-      ${state.profiles.length ? `<div class="server-list">${state.profiles.map((p) => `<article class="server-row ${p.id === state.selected ? "chosen" : ""}"><div class="server-symbol">${icon("servers")}</div><div class="server-info"><h3>${escapeHtml(p.name)}</h3><p>${escapeHtml(p.host)}:${p.port}</p><div class="tags"><span>${escapeHtml(p.protocol)}</span><span>${escapeHtml(p.transport)}</span><span>${escapeHtml(p.security)}</span></div></div><div class="server-actions"><button class="button subtle" data-select="${p.id}" ${busy ? "disabled" : ""}>${p.id === state.selected ? "Выбран" : "Выбрать"}</button><button class="delete" data-delete="${p.id}" ${busy ? "disabled" : ""}>Удалить</button></div></article>`).join("")}</div>` : `<div class="empty-state"><div class="empty-art">${moth}</div><h2>Здесь начнётся твой маршрут</h2><p>Вставь ссылку VLESS или Trojan.<br>Секреты сохраняются только в настольном приложении.</p><button class="button" data-import>${icon("plus")} Добавить первый сервер</button></div>`}
+      ${state.profiles.length ? `<div class="server-list">${state.profiles.map((p) => `<article class="server-row ${p.id === state.selected ? "chosen" : ""}"><div class="server-symbol">${icon("servers")}</div><div class="server-info"><h3>${escapeHtml(p.name)}</h3><p>${escapeHtml(p.host)}:${p.port}</p><div class="tags"><span>${escapeHtml(p.protocol)}</span><span>${escapeHtml(p.transport)}</span><span>${escapeHtml(p.security)}</span></div></div><div class="server-actions"><button class="button subtle" data-probe="${p.id}" ${busy || probingId ? "disabled" : ""}>${probingId === p.id ? "Проверяем…" : "Проверить сервер"}</button><span class="probe-result" role="status">${escapeHtml(probeResults.get(p.id) || "")}</span><button class="button subtle" data-select="${p.id}" ${busy ? "disabled" : ""}>${p.id === state.selected ? "Выбран" : "Выбрать"}</button><button class="delete" data-delete="${p.id}" ${busy ? "disabled" : ""}>Удалить</button></div></article>`).join("")}</div>` : `<div class="empty-state"><div class="empty-art">${moth}</div><h2>Здесь начнётся твой маршрут</h2><p>Вставь ссылку VLESS или Trojan.<br>Секреты сохраняются только в настольном приложении.</p><button class="button" data-import>${icon("plus")} Добавить первый сервер</button></div>`}
     `
           : `<div class="page-heading"><div><p class="eyebrow">ПОД КРЫЛОМ</p><h1>Настройки</h1><p class="muted">Состояние этой сборки и доступные возможности</p></div></div>
       <article class="settings-card"><h2>Приложение</h2><div class="setting"><span>Версия</span><strong>${escapeHtml(state.version)} · Preview</strong></div><div class="setting"><span>Платформа</span><strong>${escapeHtml(state.capabilities.platform)}</strong></div><div class="setting"><span>Защищённое хранилище</span><strong>${state.capabilities.secureStorage ? "Windows DPAPI" : "Недоступно в этом режиме"}</strong></div><div class="setting"><span>Системный VPN</span><strong>В разработке</strong></div><div class="setting"><span>Kill switch</span><strong>В разработке</strong></div></article>
-      <article class="settings-card"><h2>Что дальше</h2><p class="muted">Служба Windows, сетевые ядра, системный туннель и проверка DNS. Затем — восстановление после сбоев, трей и установщик. Настройки подключения появятся вместе с работающими возможностями.</p></article>`
+      <article class="settings-card"><h2>Сетевые компоненты</h2>${(state.engines || []).map((e) => `<div class="setting"><span>${escapeHtml(e.name)} ${escapeHtml(e.version)}</span><strong>${e.available ? "Готов к проверке серверов" : escapeHtml(e.message || "Недоступен")}</strong></div>`).join("")}<p class="muted">HTTPS-проверка проходит через выбранный сервер. Её результат — не ICMP ping и не признак включённого системного VPN.</p></article><article class="settings-card"><h2>Что дальше</h2><p class="muted">Служба Windows, сетевые ядра, системный туннель и проверка DNS. Затем — восстановление после сбоев, трей и установщик. Настройки подключения появятся вместе с работающими возможностями.</p></article>`
     }
     </section><footer><span>MOTH · OPEN SOURCE</span><span>Спокойное соединение с миром.</span></footer></main></div>
     <dialog id="import-dialog"><form id="import-form"><div class="dialog-heading"><div><p class="eyebrow">НОВЫЙ МАРШРУТ</p><h2>Добавить серверы</h2></div><button type="button" class="close" aria-label="Закрыть">×</button></div><label for="server-links">Ссылки серверов</label><textarea id="server-links" required rows="6" autocomplete="off" spellcheck="false" placeholder="vless://… или trojan://…"></textarea><p class="dialog-help">По одной ссылке на строку или Base64-список. Загрузка HTTPS-подписок будет добавлена позже.</p><p id="import-error" class="dialog-error" role="alert"></p><div class="dialog-actions"><button type="button" class="button subtle close">Отмена</button><button class="button" type="submit">Импортировать</button></div></form></dialog>
@@ -89,6 +91,25 @@ function render() {
         page = b.dataset.page as typeof page;
         error = "";
         render();
+      }),
+  );
+  app.querySelectorAll<HTMLButtonElement>("[data-probe]").forEach(
+    (b) =>
+      (b.onclick = async () => {
+        const id = b.dataset.probe!;
+        if (probingId || busy) return;
+        probingId = id;
+        render();
+        try {
+          const result = await probe(id);
+          if (result.profileId === id)
+            probeResults.set(id, `HTTPS · ${result.latencyMs} мс`);
+        } catch (e) {
+          probeResults.set(id, message(e));
+        } finally {
+          probingId = null;
+          render();
+        }
       }),
   );
   const dialog = app.querySelector<HTMLDialogElement>("#import-dialog")!;

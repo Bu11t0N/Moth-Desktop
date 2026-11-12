@@ -59,7 +59,7 @@ test("native adapter renders untrusted summaries as text and manages selected se
         return {
           profiles,
           selected: profiles.length ? "test-id" : null,
-          version: "0.1.0",
+          version: "0.2.0",
           capabilities: {
             platform: "windows",
             secureStorage: true,
@@ -115,4 +115,65 @@ test("keyboard closes import and no external resources are requested", async ({
     .click();
   await expect(page.getByLabel("Ссылки серверов")).toHaveValue("");
   expect(external).toEqual([]);
+});
+
+test("server probe reports measured result without enabling system VPN", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const w = window as unknown as {
+      isTauri: boolean;
+      __TAURI_INTERNALS__: unknown;
+    };
+    w.isTauri = true;
+    w.__TAURI_INTERNALS__ = {
+      invoke: async (cmd: string) => {
+        if (cmd === "probe_server") {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          return { profileId: "probe-id", latencyMs: 125 };
+        }
+        return {
+          profiles: [
+            {
+              id: "probe-id",
+              name: "Тестовый сервер",
+              host: "example.com",
+              port: 443,
+              protocol: "VLESS",
+              transport: "TCP",
+              security: "TLS",
+            },
+          ],
+          selected: "probe-id",
+          version: "0.2.0",
+          engines: [
+            {
+              name: "xray",
+              version: "26.10.21",
+              available: true,
+              message: null,
+            },
+          ],
+          capabilities: {
+            platform: "windows",
+            secureStorage: true,
+            systemTunnel: false,
+            killSwitch: false,
+          },
+        };
+      },
+    };
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Серверы 1" }).click();
+  await page
+    .getByRole("button", { name: "Проверить сервер", exact: true })
+    .click();
+  await expect(page.getByRole("status")).toHaveText("HTTPS · 125 мс");
+  await page.screenshot({ path: "test-results/servers.png", fullPage: true });
+  await page.getByRole("button", { name: "Главная", exact: true }).click();
+  await expect(page.getByText("VPN сейчас не защищает трафик")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Подключение в разработке" }),
+  ).toBeDisabled();
 });

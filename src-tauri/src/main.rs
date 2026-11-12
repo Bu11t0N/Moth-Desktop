@@ -9,6 +9,9 @@ use uuid::Uuid;
 struct AppState {
     store: ProfileStore,
     library: Mutex<Library>,
+    engines: moth_engine::EngineSet,
+    engine_status: Vec<moth_engine::EngineStatus>,
+    probe_gate: tokio::sync::Mutex<()>,
 }
 
 #[derive(Serialize)]
@@ -18,20 +21,22 @@ struct Snapshot {
     selected: Option<Uuid>,
     capabilities: moth_platform::Capabilities,
     version: &'static str,
+    engines: Vec<moth_engine::EngineStatus>,
 }
-fn snapshot(library: &Library) -> Snapshot {
+fn snapshot(library: &Library, engines: &[moth_engine::EngineStatus]) -> Snapshot {
     Snapshot {
         profiles: library.profiles.iter().map(|p| p.summary()).collect(),
         selected: library.selected,
         capabilities: moth_platform::capabilities(),
         version: env!("CARGO_PKG_VERSION"),
+        engines: engines.to_vec(),
     }
 }
 
 #[tauri::command]
 fn get_snapshot(state: tauri::State<AppState>) -> Result<Snapshot, String> {
     let library = state.library.lock().map_err(|_| "Хранилище недоступно")?;
-    Ok(snapshot(&library))
+    Ok(snapshot(&library, &state.engine_status))
 }
 fn mutate(
     state: &AppState,
@@ -42,7 +47,7 @@ fn mutate(
     change(&mut next)?;
     state.store.save(&next).map_err(|e| e.to_string())?;
     *library = next;
-    Ok(snapshot(&library))
+    Ok(snapshot(&library, &state.engine_status))
 }
 #[tauri::command]
 fn import_servers(text: String, state: tauri::State<AppState>) -> Result<Snapshot, String> {
@@ -72,6 +77,30 @@ fn remove_server(id: Uuid, state: tauri::State<AppState>) -> Result<Snapshot, St
         }
     })
 }
+#[tauri::command]
+async fn probe_server(
+    id: Uuid,
+    state: tauri::State<'_, AppState>,
+) -> Result<moth_engine::ProbeResult, String> {
+    let _probe = state
+        .probe_gate
+        .try_lock()
+        .map_err(|_| "Другая проверка ещё выполняется")?;
+    let profile = {
+        let library = state.library.lock().map_err(|_| "Хранилище недоступно")?;
+        library
+            .profiles
+            .iter()
+            .find(|p| p.id == id)
+            .cloned()
+            .ok_or("Сервер не найден")?
+    };
+    state
+        .engines
+        .probe(&profile)
+        .await
+        .map_err(|e| e.to_string())
+}
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
@@ -84,9 +113,19 @@ fn main() {
             }
             let store = ProfileStore::new(directory);
             let library = store.load()?;
+            let engine_directory = if cfg!(debug_assertions) {
+                moth_engine::development_directory()?
+            } else {
+                app.path().resource_dir()?.join("engines")
+            };
+            let engines = moth_engine::EngineSet::new(engine_directory);
+            let engine_status = engines.status();
             app.manage(AppState {
                 store,
                 library: Mutex::new(library),
+                engines,
+                engine_status,
+                probe_gate: tokio::sync::Mutex::new(()),
             });
             Ok(())
         })
@@ -94,7 +133,8 @@ fn main() {
             get_snapshot,
             import_servers,
             select_server,
-            remove_server
+            remove_server,
+            probe_server
         ])
         .run(tauri::generate_context!())
         .expect("Не удалось запустить Moth Desktop");

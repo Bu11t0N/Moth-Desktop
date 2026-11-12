@@ -104,3 +104,10 @@ fn rejects_malformed_escapes_and_unused_security_options() {
         assert!(import_links(link).is_err());
     }
 }
+
+#[test]
+fn unencrypted_vless_is_limited_to_private_destinations() {
+    let base = "vless://c6b3a07a-8bf9-4a18-905b-ea41642633c3@";
+    assert!(import_links(&format!("{base}example.com:443?security=none")).is_err());
+    assert!(import_links(&format!("{base}127.0.0.1:443?security=none")).is_ok());
+}

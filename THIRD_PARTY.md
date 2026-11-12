@@ -9,6 +9,17 @@ uuid (MIT/Apache-2.0), url (MIT/Apache-2.0), base64 (MIT/Apache-2.0), percent-en
 (MIT/Apache-2.0), tempfile (MIT/Apache-2.0), TypeScript (Apache-2.0), Vite (MIT)
 and Playwright (Apache-2.0), Prettier (MIT). Cargo.lock and package-lock.json pin resolved dependencies.
 
-No sing-box, Xray, Wintun or other VPN engine binary is distributed in this preview.
-Their notices, exact source/patches and source-offer obligations must be added before bundling.
+Development packages now include unmodified official Xray 26.10.21 (MPL-2.0) and
+sing-box 1.12.25 (GPL-3.0-or-later) executables. Versions, exact archive/executable
+hashes and source locations are in `engines.lock.json`; full source revisions and
+build references are in [docs/ENGINES.md](docs/ENGINES.md). Source is publicly available
+at those exact revisions. No Android patches are applied to these executables.
+Xray's license is in `licenses/Xray-MPL-2.0.txt`; sing-box's copyright/license notice
+is in `licenses/sing-box-GPL-3.0.txt` and the full GPLv3 text is in `LICENSE`.
+No Wintun DLL or independent driver is bundled in this milestone. Moth is not an
+official SagerNet or XTLS client. Retain all these notices alongside the executables.
+
+Additional Rust dependencies include Tokio, reqwest and sha2 (MIT/Apache-2.0);
+resolved dependencies are pinned in Cargo.lock. The engine source trees include their
+go.mod/go.sum and upstream build configuration for the transitive Go dependency graph.
 Dependency/license inventory is a release gate; this short list is not a complete transitive inventory.

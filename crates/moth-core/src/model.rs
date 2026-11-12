@@ -193,7 +193,7 @@ pub fn xray_check_config(profile: &Profile) -> serde_json::Value {
             stream["network"] = json!("ws");
             stream["wsSettings"] = json!({"path":path});
             if let Some(h) = host {
-                stream["wsSettings"]["headers"] = json!({"Host":h});
+                stream["wsSettings"]["host"] = json!(h);
             }
         }
         Transport::Grpc { service_name } => {

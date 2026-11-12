@@ -253,6 +253,20 @@ fn parse(line: &str) -> Result<Profile, &'static str> {
     if protocol == Protocol::Trojan && !matches!(tls, Tls::Tls { .. }) {
         return Err("Trojan требует TLS");
     }
+    if protocol == Protocol::Vless && matches!(tls, Tls::None) {
+        let private = host == "localhost"
+            || host.parse::<std::net::IpAddr>().is_ok_and(|ip| match ip {
+                std::net::IpAddr::V4(ip) => {
+                    ip.is_private() || ip.is_loopback() || ip.is_link_local()
+                }
+                std::net::IpAddr::V6(ip) => {
+                    ip.is_loopback() || ip.is_unique_local() || ip.is_unicast_link_local()
+                }
+            });
+        if !private {
+            return Err("Эта версия Xray требует TLS или Reality для публичного сервера VLESS");
+        }
+    }
     let flow = q.get("flow").filter(|s| !s.is_empty()).cloned();
     if let Some(flow) = &flow {
         if protocol != Protocol::Vless

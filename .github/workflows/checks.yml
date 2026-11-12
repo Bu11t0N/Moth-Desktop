@@ -18,9 +18,11 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - run: npm ci
+      - run: npm run engines:fetch
       - run: npm run build
       - run: cargo fmt --all --check
       - run: cargo test --workspace --locked
+      - run: npm run engines:test
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: npx playwright install chromium
       - run: npm test
@@ -28,11 +30,18 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: Moth-Windows-unsigned-development-preview
-          path: target/release/moth-desktop.exe
+          path: |
+            target/release/moth-desktop.exe
+            target/release/engines/
+            target/release/notices/
   linux-core:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - uses: Swatinem/rust-cache@v2
-      - run: cargo test -p moth-core -p moth-platform --locked
+      - run: node scripts/fetch-engines.mjs
+      - run: cargo test -p moth-core -p moth-platform -p moth-engine --locked -- --include-ignored

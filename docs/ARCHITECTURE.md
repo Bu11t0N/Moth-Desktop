@@ -31,9 +31,10 @@ may need a sing-box TUN bridge; topology is to be proven in M1, not assumed comp
 Review Android patches individually (socket protection, shutdown, dependency conflicts).
 Do not blindly transplant Android VPN socket controls into Windows.
 
-Current generated Xray config has outbounds only and is for structural checking. It cannot
-be launched as a system VPN and is never exposed to the frontend. An engine-level fixture
-runner is required before declaring compatibility.
+M1a implements pinned external engines in `moth-engine`, native config checks and
+short-lived authenticated local SOCKS for HTTPS probing. sing-box TUN / Xray bridge
+configs validate but are not executed as a system VPN. See ENGINES.md for evidence,
+Android patch review, process containment and explicit remaining limitations.
 
 ## ADR-005: protected storage
 

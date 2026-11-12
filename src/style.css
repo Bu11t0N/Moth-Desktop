@@ -571,6 +571,14 @@ footer span:first-child {
   display: grid;
   gap: 8px;
 }
+.probe-result {
+  max-width: 180px;
+  font-size: 10px;
+  line-height: 1.5;
+  color: #bacbb0;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
 .delete {
   border: 0;
   background: none;

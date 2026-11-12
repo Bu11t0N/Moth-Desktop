@@ -13,6 +13,12 @@ export type Snapshot = {
   profiles: Profile[];
   selected: string | null;
   version: string;
+  engines: {
+    name: string;
+    version: string;
+    available: boolean;
+    message: string | null;
+  }[];
   capabilities: {
     platform: string;
     secureStorage: boolean;
@@ -24,7 +30,8 @@ export const native = isTauri();
 export const empty: Snapshot = {
   profiles: [],
   selected: null,
-  version: "0.1.0",
+  version: "0.2.0",
+  engines: [],
   capabilities: {
     platform: "browser",
     secureStorage: false,
@@ -43,4 +50,10 @@ export async function call(
     );
   }
   return invoke<Snapshot>(command, args);
+}
+export type ProbeResult = { profileId: string; latencyMs: number };
+export async function probe(id: string): Promise<ProbeResult> {
+  if (!native)
+    throw new Error("Проверка сервера доступна в настольном приложении.");
+  return invoke<ProbeResult>("probe_server", { id });
 }
