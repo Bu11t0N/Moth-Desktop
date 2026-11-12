@@ -22,9 +22,14 @@ Current milestone: M1a, engine integration, preview 0.2.0. No system VPN yet.
   traffic plus wrong-UUID failure. Clippy with warnings denied passed.
 - Frontend build and 4 Playwright scenarios passed, including probe UI semantics.
 - SHA-256 hashes measured for official Windows/Linux x64 archives/executables.
-- Linux native-engine tests added to CI; current-commit result must be checked after push.
+- Implementation commit `9a5e5fe`: Windows and Linux native-engine CI both passed,
+  including Windows build, Clippy and UI checks:
+  https://github.com/Bu11t0N/Moth-Desktop/actions/runs/43228887516
 - Production UI screenshot and Windows EXE compilation checked at M0; M1a native
   WebView2 visual/runtime acceptance and additional DPI/accessibility checks remain pending.
+  The native app automation launch approval timed out; no live-window result is claimed.
+- M1a optimized Windows EXE compiled. Development ZIP contains the EXE, verified engines,
+  notices, a readme and SHA-256 manifest; no installer or service is installed by this package.
 
 ## Next
 
