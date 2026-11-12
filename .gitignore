@@ -1,0 +1,13 @@
+/node_modules/
+/dist/
+/target/
+/.local/
+/src-tauri/gen/
+/test-results/
+/playwright-report/
+*.log
+*.p12
+*.pfx
+.env
+.env.*
+!.env.example

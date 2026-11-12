@@ -1,0 +1,35 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Moth Desktop",
+  "version": "0.1.0",
+  "identifier": "org.mothvpn.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Мотылёк",
+        "width": 1120,
+        "height": 760,
+        "minWidth": 800,
+        "minHeight": 600,
+        "backgroundColor": "#101113"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src ipc: http://ipc.localhost; object-src 'none'; base-uri 'none'; frame-src 'none'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "shortDescription": "Moth Desktop development preview",
+    "category": "Utility",
+    "icon": ["icons/icon.ico", "icons/icon.png"]
+  }
+}
