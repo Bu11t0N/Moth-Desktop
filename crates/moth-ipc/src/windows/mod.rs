@@ -100,7 +100,7 @@ impl ServiceClient {
         )
         .await
         .map_err(|_| IpcError::Timeout)??;
-        let response: Response = timeout(Duration::from_secs(25), crate::read_frame(&mut pipe))
+        let response: Response = timeout(Duration::from_secs(30), crate::read_frame(&mut pipe))
             .await
             .map_err(|_| IpcError::Timeout)??;
         crate::validate_response(&request, &response)?;
@@ -119,7 +119,11 @@ fn service_pid() -> Result<u32, IpcError> {
     unsafe {
         let manager = OpenSCManagerW(std::ptr::null(), std::ptr::null(), SC_MANAGER_CONNECT);
         if manager.is_null() {
-            return Err(IpcError::Unavailable);
+            return Err(if GetLastError() == ERROR_ACCESS_DENIED {
+                IpcError::AccessDenied
+            } else {
+                IpcError::Unavailable
+            });
         }
         let name = security::wide(SERVICE_NAME);
         let service = OpenServiceW(
@@ -127,9 +131,10 @@ fn service_pid() -> Result<u32, IpcError> {
             name.as_ptr(),
             SERVICE_QUERY_STATUS | SERVICE_QUERY_CONFIG,
         );
+        let service_error = if service.is_null() { GetLastError() } else { 0 };
         CloseServiceHandle(manager);
         if service.is_null() {
-            return Err(if GetLastError() == ERROR_SERVICE_DOES_NOT_EXIST {
+            return Err(if service_error == ERROR_SERVICE_DOES_NOT_EXIST {
                 IpcError::Unavailable
             } else {
                 IpcError::AccessDenied
