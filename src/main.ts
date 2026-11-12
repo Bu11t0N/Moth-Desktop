@@ -1,11 +1,20 @@
 import "./style.css";
-import { call, empty, native, probe, type Snapshot } from "./api";
+import {
+  call,
+  empty,
+  native,
+  probe,
+  serviceStatus,
+  type Snapshot,
+} from "./api";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
 let state: Snapshot = structuredClone(empty);
 let page: "home" | "servers" | "settings" = "home";
 let busy = false;
 let error = "";
+let serviceMessage = "Ещё не проверена";
+let serviceChecking = false;
 const probeResults = new Map<string, string>();
 let probingId: string | null = null;
 
@@ -48,9 +57,9 @@ function render() {
             `<button class="nav-item ${page === key ? "active" : ""}" data-page="${key}" ${page === key ? 'aria-current="page"' : ""}>${icon(key)}${title}${key === "servers" ? `<span class="count">${state.profiles.length}</span>` : ""}</button>`,
         )
         .join("")}</nav>
-      <div class="sidebar-bottom"><span class="version-dot"></span> Версия для разработки<small>0.2.0 · Windows first</small></div>
+      <div class="sidebar-bottom"><span class="version-dot"></span> Версия для разработки<small>0.3.0 · Windows first</small></div>
     </aside>
-    <main><header><div class="breadcrumb">ЛИЧНОЕ ПРОСТРАНСТВО <span>/</span> ${page === "home" ? "ОБЗОР" : page === "servers" ? "СЕРВЕРЫ" : "НАСТРОЙКИ"}</div><span class="build-badge">PREVIEW 02</span></header>
+    <main><header><div class="breadcrumb">ЛИЧНОЕ ПРОСТРАНСТВО <span>/</span> ${page === "home" ? "ОБЗОР" : page === "servers" ? "СЕРВЕРЫ" : "НАСТРОЙКИ"}</div><span class="build-badge">PREVIEW 03</span></header>
     ${!native ? '<div class="preview-note">Просмотр интерфейса в браузере. Профили и подключение доступны только в настольном приложении.</div>' : ""}
     ${error ? `<div class="error" role="alert">${escapeHtml(error)}</div>` : ""}
     <section class="content">
@@ -75,7 +84,7 @@ function render() {
     `
           : `<div class="page-heading"><div><p class="eyebrow">ПОД КРЫЛОМ</p><h1>Настройки</h1><p class="muted">Состояние этой сборки и доступные возможности</p></div></div>
       <article class="settings-card"><h2>Приложение</h2><div class="setting"><span>Версия</span><strong>${escapeHtml(state.version)} · Preview</strong></div><div class="setting"><span>Платформа</span><strong>${escapeHtml(state.capabilities.platform)}</strong></div><div class="setting"><span>Защищённое хранилище</span><strong>${state.capabilities.secureStorage ? "Windows DPAPI" : "Недоступно в этом режиме"}</strong></div><div class="setting"><span>Системный VPN</span><strong>В разработке</strong></div><div class="setting"><span>Kill switch</span><strong>В разработке</strong></div></article>
-      <article class="settings-card"><h2>Сетевые компоненты</h2>${(state.engines || []).map((e) => `<div class="setting"><span>${escapeHtml(e.name)} ${escapeHtml(e.version)}</span><strong>${e.available ? "Готов к проверке серверов" : escapeHtml(e.message || "Недоступен")}</strong></div>`).join("")}<p class="muted">HTTPS-проверка проходит через выбранный сервер. Её результат — не ICMP ping и не признак включённого системного VPN.</p></article><article class="settings-card"><h2>Что дальше</h2><p class="muted">Служба Windows, сетевые ядра, системный туннель и проверка DNS. Затем — восстановление после сбоев, трей и установщик. Настройки подключения появятся вместе с работающими возможностями.</p></article>`
+      <article class="settings-card"><h2>Служба Windows</h2><p class="muted" role="status">${escapeHtml(serviceMessage)}</p><button class="button subtle service-refresh" ${serviceChecking ? "disabled" : ""}>${serviceChecking ? "Проверяем…" : "Проверить связь со службой"}</button><p class="muted">В preview проверка серверов работает и без установленной службы. Системный VPN пока недоступен.</p></article><article class="settings-card"><h2>Сетевые компоненты</h2>${(state.engines || []).map((e) => `<div class="setting"><span>${escapeHtml(e.name)} ${escapeHtml(e.version)}</span><strong>${e.available ? "Готов к проверке серверов" : escapeHtml(e.message || "Недоступен")}</strong></div>`).join("")}<p class="muted">HTTPS-проверка проходит через выбранный сервер. Её результат — не ICMP ping и не признак включённого системного VPN.</p></article><article class="settings-card"><h2>Что дальше</h2><p class="muted">Служба Windows, сетевые ядра, системный туннель и проверка DNS. Затем — восстановление после сбоев, трей и установщик. Настройки подключения появятся вместе с работающими возможностями.</p></article>`
     }
     </section><footer><span>MOTH · OPEN SOURCE</span><span>Спокойное соединение с миром.</span></footer></main></div>
     <dialog id="import-dialog"><form id="import-form"><div class="dialog-heading"><div><p class="eyebrow">НОВЫЙ МАРШРУТ</p><h2>Добавить серверы</h2></div><button type="button" class="close" aria-label="Закрыть">×</button></div><label for="server-links">Ссылки серверов</label><textarea id="server-links" required rows="6" autocomplete="off" spellcheck="false" placeholder="vless://… или trojan://…"></textarea><p class="dialog-help">По одной ссылке на строку или Base64-список. Загрузка HTTPS-подписок будет добавлена позже.</p><p id="import-error" class="dialog-error" role="alert"></p><div class="dialog-actions"><button type="button" class="button subtle close">Отмена</button><button class="button" type="submit">Импортировать</button></div></form></dialog>
@@ -112,6 +121,23 @@ function render() {
         }
       }),
   );
+  const serviceButton =
+    app.querySelector<HTMLButtonElement>(".service-refresh");
+  if (serviceButton)
+    serviceButton.onclick = async () => {
+      if (serviceChecking) return;
+      serviceChecking = true;
+      render();
+      try {
+        const health = await serviceStatus();
+        serviceMessage = `Связь установлена · ${health.version} · протокол ${health.protocol}`;
+      } catch (e) {
+        serviceMessage = message(e);
+      } finally {
+        serviceChecking = false;
+        render();
+      }
+    };
   const dialog = app.querySelector<HTMLDialogElement>("#import-dialog")!;
   app
     .querySelectorAll<HTMLButtonElement>("[data-import]")

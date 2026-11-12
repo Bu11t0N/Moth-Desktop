@@ -20,6 +20,7 @@ No Wintun DLL or independent driver is bundled in this milestone. Moth is not an
 official SagerNet or XTLS client. Retain all these notices alongside the executables.
 
 Additional Rust dependencies include Tokio, reqwest and sha2 (MIT/Apache-2.0);
+windows-service and widestring (MIT/Apache-2.0) support the Windows service.
 resolved dependencies are pinned in Cargo.lock. The engine source trees include their
 go.mod/go.sum and upstream build configuration for the transitive Go dependency graph.
 Dependency/license inventory is a release gate; this short list is not a complete transitive inventory.

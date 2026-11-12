@@ -111,3 +111,16 @@ fn unencrypted_vless_is_limited_to_private_destinations() {
     assert!(import_links(&format!("{base}example.com:443?security=none")).is_err());
     assert!(import_links(&format!("{base}127.0.0.1:443?security=none")).is_ok());
 }
+
+#[test]
+fn internal_share_roundtrip_keeps_credentials_ipv6_and_transport() {
+    for link in [
+        "trojan://p%40ss%3Aword%2F%23@[2001:db8::1]:443?security=tls&sni=example.com&type=ws&path=%2Fa%3Fb%3Dc#%D0%A2%D0%B5%D1%81%D1%82",
+        "vless://c6b3a07a-8bf9-4a18-905b-ea41642633c3@example.com:443?security=tls&sni=example.com&type=xhttp&mode=packet-up&path=%2Fvpn",
+    ]{
+        let original=import_links(link).unwrap().remove(0);
+        let encoded=moth_core::share_link(&original).unwrap();
+        let parsed=import_links(&encoded).unwrap().remove(0);
+        assert!(original.same_server(&parsed));assert_eq!(original.name,parsed.name);
+    }
+}

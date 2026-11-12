@@ -95,11 +95,54 @@ async fn probe_server(
             .cloned()
             .ok_or("Сервер не найден")?
     };
+    #[cfg(windows)]
+    {
+        let link = moth_core::share_link(&profile).map_err(str::to_owned)?;
+        match moth_ipc::windows::ServiceClient::production()
+            .call(moth_ipc::Command::Probe { link })
+            .await
+        {
+            Ok(response) => {
+                return match response.result {
+                    moth_ipc::Reply::Probe { latency_ms } => Ok(moth_engine::ProbeResult {
+                        profile_id: id,
+                        latency_ms,
+                    }),
+                    moth_ipc::Reply::Failure { code } => Err(match code {
+                        moth_ipc::ErrorCode::Busy => "Служба уже выполняет проверку",
+                        moth_ipc::ErrorCode::EngineUnavailable => {
+                            "Сетевые компоненты службы недоступны"
+                        }
+                        moth_ipc::ErrorCode::InvalidProfile => "Служба отклонила параметры сервера",
+                        _ => "Проверка через службу не завершилась успешно",
+                    }
+                    .into()),
+                    _ => Err("Некорректный ответ службы".into()),
+                }
+            }
+            Err(moth_ipc::IpcError::Unavailable) => {} // Explicit preview support without installation.
+            Err(error) => return Err(error.to_string()), // Never fall back after an authentication failure.
+        }
+    }
     state
         .engines
         .probe(&profile)
         .await
         .map_err(|e| e.to_string())
+}
+#[tauri::command]
+async fn service_status() -> Result<moth_ipc::Health, String> {
+    #[cfg(windows)]
+    {
+        moth_ipc::windows::ServiceClient::production()
+            .health()
+            .await
+            .map_err(|e| e.to_string())
+    }
+    #[cfg(not(windows))]
+    {
+        Err("Системная служба этой платформы ещё не реализована".into())
+    }
 }
 fn main() {
     tauri::Builder::default()
@@ -134,7 +177,8 @@ fn main() {
             import_servers,
             select_server,
             remove_server,
-            probe_server
+            probe_server,
+            service_status
         ])
         .run(tauri::generate_context!())
         .expect("Не удалось запустить Moth Desktop");

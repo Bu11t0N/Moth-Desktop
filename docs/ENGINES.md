@@ -68,7 +68,8 @@ not a system kill switch. There is deliberately no sing-box run path in this cra
 
 ## Next gate
 
-Windows Service and authenticated pipe, protected installation directory, versioned
-GUI/service protocol, private runtime config lifecycle, then TUN/DNS tests in an isolated VM.
+M1b now supplies the Windows diagnostic service, authenticated pipe, protected installation
+directory and versioned GUI/service protocol (see SERVICE.md). Remaining gate: upstream
+binding/exclusion, persistent runtime lifecycle and TUN/DNS tests in an isolated VM.
 Hash-then-execute in a user-writable development folder is not a defense against malware
 running as the same user; privileged service engines must live in an administrator-owned location.

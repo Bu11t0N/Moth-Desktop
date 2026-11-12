@@ -30,7 +30,7 @@ export const native = isTauri();
 export const empty: Snapshot = {
   profiles: [],
   selected: null,
-  version: "0.2.0",
+  version: "0.3.0",
   engines: [],
   capabilities: {
     platform: "browser",
@@ -56,4 +56,15 @@ export async function probe(id: string): Promise<ProbeResult> {
   if (!native)
     throw new Error("Проверка сервера доступна в настольном приложении.");
   return invoke<ProbeResult>("probe_server", { id });
+}
+export type ServiceHealth = {
+  version: string;
+  protocol: number;
+  systemTunnel: boolean;
+  engines: { name: string; version: string; available: boolean }[];
+};
+export async function serviceStatus(): Promise<ServiceHealth> {
+  if (!native)
+    throw new Error("Проверка службы доступна в настольном приложении.");
+  return invoke<ServiceHealth>("service_status");
 }

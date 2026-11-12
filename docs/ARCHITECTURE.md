@@ -21,8 +21,10 @@ peer credentials (or D-Bus/polkit; final choice in Linux ADR). The service reval
 does not accept arbitrary paths, commands or caller-provided raw core JSON. No public HTTP API.
 Service owns real connection state; GUI never infers it from a clicked button or running PID.
 
-No service/IPC endpoint is implemented in M0. The current command surface can only manage
-local profiles. Future service/API versions require explicit negotiation during updates.
+M1b implements the Windows service and protocol v1 for health/probes. There is no system
+tunnel command yet. See SERVICE.md for peer authentication, installation ACLs, the isolated
+development harness and explicit acceptance limits. Future incompatible schemas require
+a protocol version change; service health never implies system-wide protection.
 
 ## ADR-004: engine strategy
 

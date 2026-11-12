@@ -1,48 +1,34 @@
 # Status — 2026-11-12
 
-Current milestone: M1a, engine integration, preview 0.2.0. No system VPN yet.
+Current milestone: M1b control plane, preview 0.3.0. No system VPN yet.
 
 ## Implemented
 
-- M0: Rust workspace, strict VLESS/Trojan/Base64 imports, deduplication, selection,
-  Windows DPAPI storage and Tauri interface.
-- `moth-engine`: pinned Xray 26.10.21 / sing-box 1.12.25, double archive/executable
-  SHA-256 pins, runtime verification and no frontend-controlled executable paths.
-- Timeout-bounded core processes, config via stdin, no retained core logs, restricted
-  inherited environment and Windows Job Object cleanup.
-- Per-server real HTTPS check via authenticated local SOCKS, UI latency/error reporting.
-- sing-box TUN / authenticated Xray bridge config generation, validation only.
-- Engine notices, exact source revisions and reproducible development fetch script.
+- M0/M1a: profiles, protected Windows storage, Tauri UI, pinned cores, real HTTPS probes, native config checks and isolated loopback VLESS tests.
+- moth-ipc: bounded/versioned frames, strict request schemas, response correlation, authenticated Windows named pipe and explicit development-only transport.
+- moth-service: real SCM dispatcher, stop/shutdown lifecycle, protected installation gate, health/probe commands and bounded concurrency.
+- Production client verifies SCM PID and LocalSystem before sending credentials. Server checks the actual caller token, integrity, AppContainer and group membership.
+- Explicit manual install/remove script with fixed Program Files layout and ACLs.
+- GUI service health is separate from VPN status. Probes use the installed service when available; preview local probes remain when it is absent. Auth errors never fall back.
 
 ## Verification
 
-- M0 commit e624459: remote Windows and Linux CI both passed.
-- Current local Windows tests: 13 Rust tests passed (9 domain, 3 engine, 1 DPAPI),
-  including 10 native config variants, invalid-config rejection and real loopback VLESS
-  traffic plus wrong-UUID failure. Clippy with warnings denied passed.
-- Frontend build and 4 Playwright scenarios passed, including probe UI semantics.
-- SHA-256 hashes measured for official Windows/Linux x64 archives/executables.
-- Implementation commit `9a5e5fe`: Windows and Linux native-engine CI both passed,
-  including Windows build, Clippy and UI checks:
-  https://github.com/Bu11t0N/Moth-Desktop/actions/runs/43228887516
-- Production UI screenshot and Windows EXE compilation checked at M0; M1a native
-  WebView2 visual/runtime acceptance and additional DPI/accessibility checks remain pending.
-  The native app automation launch approval timed out; no live-window result is claimed.
-- M1a optimized Windows EXE compiled. Development ZIP contains the EXE, verified engines,
-  notices, a readme and SHA-256 manifest; no installer or service is installed by this package.
+- Prior 0.2.0 implementation 9a5e5fe: Windows/Linux CI passed: https://github.com/Bu11t0N/Moth-Desktop/actions/runs/43228887516
+- Current local Windows: 19 Rust tests passed (10 core, 3 engine, 3 protocol, 2 real pipe integration, 1 DPAPI); Clippy with warnings denied passed.
+- Five Playwright scenarios and TypeScript/Vite build passed.
+- Console process/pipe integration covers health, first-instance protection, wrong version, oversized request, recovery, invalid profile and rejection of a fake peer before credentials are written. PowerShell scripts parse successfully.
+- Real SCM install/start/authenticated health/stop/restart/remove added to disposable Windows CI only. Current commit SCM/CI result must be recorded after publishing.
+- No service was installed and no network settings changed on the developer host.
+- Native WebView2 live-window/DPI/accessibility checks remain pending; previous automation app-launch approval timed out. Browser UI tests are not native visual acceptance.
 
 ## Next
 
-1. Windows Service and authenticated, versioned IPC; privileged engine installation layout.
-2. Upstream-socket route exclusion/interface binding and actual TUN/DNS in an isolated VM.
-3. OS kill switch and recovery after core/service/UI crashes, sleep and network changes.
-4. HTTPS subscriptions and Android backup compatibility.
-5. Tray, installer/update policy; Linux service/storage after Windows boundaries stabilize.
+1. Interface discovery and upstream socket/route exclusion, then actual TUN/DNS in a VM.
+2. Per-user connection ownership, lifecycle/recovery policy and OS kill switch.
+3. Non-admin/multiple-session and low-integrity/AppContainer acceptance; security review.
+4. HTTPS subscriptions, Android backups, tray and signed installer/update policy.
+5. Linux daemon/transport/secret storage. Protocol/domain/engine logic remains portable.
 
 ## Not implemented / not claimed
 
-Working system TUN, system-wide connection, kill switch, DNS/IPv6 leak protection,
-background service, tray, HTTP subscription downloads, Android backup import,
-automatic updates, production installer, Linux protected storage or full protocol parity.
-HTTP loopback transfer and config acceptance do not establish remote-provider or
-TLS/Reality/UDP interoperability. No host network settings were modified during tests.
+System-wide VPN connection, working TUN, kill switch, DNS/IPv6 leak protection, persistent tunnel/reconnection, production installer/upgrades, automatic updates, Linux daemon/storage, full protocol parity or native GUI acceptance. A RUNNING service or a successful HTTPS probe does not protect system traffic.

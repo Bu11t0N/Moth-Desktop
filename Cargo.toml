@@ -1,10 +1,10 @@
 [workspace]
-members = ["crates/moth-core", "crates/moth-platform", "crates/moth-engine", "src-tauri"]
-default-members = ["crates/moth-core", "crates/moth-platform", "crates/moth-engine"]
+members = ["crates/moth-core", "crates/moth-platform", "crates/moth-engine", "crates/moth-ipc", "crates/moth-service", "src-tauri"]
+default-members = ["crates/moth-core", "crates/moth-platform", "crates/moth-engine", "crates/moth-ipc", "crates/moth-service"]
 resolver = "2"
 
 [workspace.package]
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 license = "GPL-3.0-or-later"
 rust-version = "1.99"

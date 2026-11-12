@@ -59,7 +59,7 @@ test("native adapter renders untrusted summaries as text and manages selected se
         return {
           profiles,
           selected: profiles.length ? "test-id" : null,
-          version: "0.2.0",
+          version: "0.3.0",
           capabilities: {
             platform: "windows",
             secureStorage: true,
@@ -145,7 +145,7 @@ test("server probe reports measured result without enabling system VPN", async (
             },
           ],
           selected: "probe-id",
-          version: "0.2.0",
+          version: "0.3.0",
           engines: [
             {
               name: "xray",
@@ -176,4 +176,50 @@ test("server probe reports measured result without enabling system VPN", async (
   await expect(
     page.getByRole("button", { name: "Подключение в разработке" }),
   ).toBeDisabled();
+});
+
+test("authenticated service health is separate from VPN protection", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const w = window as unknown as {
+      isTauri: boolean;
+      __TAURI_INTERNALS__: unknown;
+    };
+    w.isTauri = true;
+    w.__TAURI_INTERNALS__ = {
+      invoke: async (cmd: string) => {
+        if (cmd === "service_status")
+          return {
+            version: "0.3.0",
+            protocol: 1,
+            systemTunnel: false,
+            engines: [],
+          };
+        return {
+          profiles: [],
+          selected: null,
+          version: "0.3.0",
+          engines: [],
+          capabilities: {
+            platform: "windows",
+            secureStorage: true,
+            systemTunnel: false,
+            killSwitch: false,
+          },
+        };
+      },
+    };
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Настройки", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Проверить связь со службой", exact: true })
+    .click();
+  await expect(page.getByRole("status")).toContainText(
+    "Связь установлена · 0.3.0",
+  );
+  await page.screenshot({ path: "test-results/service.png", fullPage: true });
+  await page.getByRole("button", { name: "Главная", exact: true }).click();
+  await expect(page.getByText("VPN сейчас не защищает трафик")).toBeVisible();
 });

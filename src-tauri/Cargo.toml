@@ -13,6 +13,7 @@ tauri = { version = "2", features = [] }
 moth-core = { path = "../crates/moth-core" }
 moth-platform = { path = "../crates/moth-platform" }
 moth-engine = { path = "../crates/moth-engine" }
+moth-ipc = {path="../crates/moth-ipc"}
 tokio = {version="1",features= ["sync"] }
 serde.workspace = true
 uuid.workspace = true

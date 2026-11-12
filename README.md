@@ -16,6 +16,8 @@ Rust domain/platform layers and a Tauri 2 + TypeScript interface, designed for a
 - Real per-server HTTPS probe through a short-lived authenticated local Xray proxy.
 - Engine-validated configuration matrix and sing-box TUN plan (not executed as a VPN).
 - Windows Job Object cleanup, bounded process lifetimes, config through stdin, suppressed core logs.
+- Windows Service + authenticated/versioned named pipe, optional service-backed probes.
+- Separate service health view; explicit manual installation, no automatic privilege elevation.
 
 Unsupported URI options are rejected rather than silently discarded. HTTP subscription fetching,
 Clash/sing-box/Xray JSON imports, Android backups and other protocols are planned, not implemented.
@@ -35,6 +37,8 @@ npm run desktop:dev
 ```sh
 cargo test --workspace
 npm run engines:test
+cargo test -p moth-ipc -p moth-service
+cargo build -p moth-service --release
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 npm run build
@@ -66,6 +70,8 @@ Corrupt/undecryptable storage causes an explicit startup failure and is never ov
 crates/moth-core/       UI-independent profiles, import and config generation
 crates/moth-platform/   Windows protected storage, platform capabilities
 crates/moth-engine/     Verified core processes, config validation and server probes
+crates/moth-ipc/        Portable protocol and Windows authenticated named pipe
+crates/moth-service/    Windows SCM executable and non-privileged console test harness
 src-tauri/             Tauri adapter and narrowly scoped IPC commands
 src/                   Local-only desktop interface
 docs/                  Specification, architecture and progress
@@ -74,6 +80,13 @@ tests/                 Browser UI checks
 
 The domain/platform crates do not depend on Tauri. A later Iced frontend can reuse them;
 shipping two frontends is outside the first release. No Android repository files are changed.
+
+## Optional Windows service (0.3.0 development preview)
+
+The fully extracted development ZIP includes `moth-service.exe` and `Service.ps1`.
+Normal use does not install a service. See [service architecture, manual setup and limits](docs/SERVICE.md).
+The service supports health/probes only; it does not yet enable a system-wide VPN.
+SCM acceptance runs only on disposable CI, not on the developer's host computer.
 
 ## License
 

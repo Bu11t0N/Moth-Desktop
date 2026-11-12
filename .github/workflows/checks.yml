@@ -26,12 +26,20 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: npx playwright install chromium
       - run: npm test
+      - run: cargo build -p moth-service --release --locked
       - run: npm run desktop:build -- --no-bundle
+      - name: Windows SCM install, authenticated health, stop/start and removal
+        shell: pwsh
+        run: ./scripts/test-service-scm.ps1
+      - shell: pwsh
+        run: Copy-Item scripts/Service.ps1 target/release/Service.ps1
       - uses: actions/upload-artifact@v4
         with:
           name: Moth-Windows-unsigned-development-preview
           path: |
             target/release/moth-desktop.exe
+            target/release/moth-service.exe
+            target/release/Service.ps1
             target/release/engines/
             target/release/notices/
   linux-core:
@@ -44,4 +52,4 @@ jobs:
           node-version: 22
       - uses: Swatinem/rust-cache@v2
       - run: node scripts/fetch-engines.mjs
-      - run: cargo test -p moth-core -p moth-platform -p moth-engine --locked -- --include-ignored
+      - run: cargo test -p moth-core -p moth-platform -p moth-engine -p moth-ipc -p moth-service --locked -- --include-ignored
