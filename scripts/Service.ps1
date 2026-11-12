@@ -45,7 +45,10 @@ foreach ($sid in @('S-1-5-18','S-1-5-32-544','S-1-5-32-545')) {
 }
 Set-Acl -LiteralPath $installRoot -AclObject $acl
 Copy-Item -LiteralPath (Join-Path $package 'moth-service.exe') -Destination $installRoot
-Copy-Item -LiteralPath (Join-Path $package 'engines') -Destination $installRoot -Recurse
+New-Item -ItemType Directory -Path (Join-Path $installRoot 'engines') | Out-Null
+foreach ($core in @('xray.exe','sing-box.exe')) {
+    Copy-Item -LiteralPath (Join-Path $package "engines\$core") -Destination (Join-Path $installRoot 'engines')
+}
 if (Test-Path -LiteralPath (Join-Path $package 'notices')) { Copy-Item -LiteralPath (Join-Path $package 'notices') -Destination $installRoot -Recurse }
 & "$env:SystemRoot\System32\icacls.exe" $installRoot /setowner '*S-1-5-32-544' /T /C | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'Could not set installation ownership' }
