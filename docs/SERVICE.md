@@ -20,7 +20,8 @@ Fixed pipe: `\\.\pipe\Moth.Desktop.Service.v1`.
 
 The client queries Windows SCM for the registered RUNNING PID, opens the local pipe with
 identification-only SQOS and explicit read/write-data rights, checks the actual server PID,
-checks its process token is LocalSystem, and rechecks SCM. Profile serialization/writing to
+checks SCM declares an own-process LocalSystem service, and rechecks SCM. This uses ordinary
+query rights rather than requiring access to another account's process token. Profile serialization/writing to
 the pipe happens only after peer verification. A squatted endpoint cannot receive credentials.
 
 The server requires LocalSystem, a protected fixed Program Files installation and verified
@@ -96,7 +97,8 @@ sent. Core share-link roundtrip covers reserved credentials and IPv6. UI test ke
 health distinct from VPN status. Windows SCM install/start/health/stop/restart/removal is
 configured on a disposable GitHub-hosted runner only (`scripts/test-service-scm.ps1`).
 
-Separate non-administrator/multiple-logon-session acceptance, low-integrity/AppContainer
+CI also creates an ephemeral non-administrator account and runs the real client against
+the installed service; it is removed during cleanup. Multiple-logon-session acceptance, low-integrity/AppContainer
 negative tests, independent security review and mid-probe service-crash cleanup remain
 required before production release. Console/administrator CI tests do not establish them.
 Linux uses the portable protocol crate but has no implemented daemon/transport yet.

@@ -74,15 +74,14 @@ impl ServiceClient {
         {
             return Err(IpcError::UntrustedPeer);
         }
-        let sid = security::process_sid(actual)?;
         match self.development_pid {
             Some(_) => {
-                if sid != current_sid()? {
+                if security::process_sid(actual)? != current_sid()? {
                     return Err(IpcError::UntrustedPeer);
                 }
             }
             None => {
-                if sid != "S-1-5-18" || service_pid()? != actual {
+                if service_pid()? != actual {
                     return Err(IpcError::UntrustedPeer);
                 }
             }
@@ -123,10 +122,18 @@ fn service_pid() -> Result<u32, IpcError> {
             return Err(IpcError::Unavailable);
         }
         let name = security::wide(SERVICE_NAME);
-        let service = OpenServiceW(manager, name.as_ptr(), SERVICE_QUERY_STATUS);
+        let service = OpenServiceW(
+            manager,
+            name.as_ptr(),
+            SERVICE_QUERY_STATUS | SERVICE_QUERY_CONFIG,
+        );
         CloseServiceHandle(manager);
         if service.is_null() {
-            return Err(IpcError::Unavailable);
+            return Err(if GetLastError() == ERROR_SERVICE_DOES_NOT_EXIST {
+                IpcError::Unavailable
+            } else {
+                IpcError::AccessDenied
+            });
         }
         let mut status: SERVICE_STATUS_PROCESS = std::mem::zeroed();
         let mut size = 0;
@@ -137,9 +144,38 @@ fn service_pid() -> Result<u32, IpcError> {
             std::mem::size_of_val(&status) as u32,
             &mut size,
         );
-        CloseServiceHandle(service);
         if ok == 0 || status.dwCurrentState != SERVICE_RUNNING || status.dwProcessId == 0 {
+            CloseServiceHandle(service);
             return Err(IpcError::Unavailable);
+        }
+        // QUERY_CONFIG is available to ordinary authenticated users. Opening a
+        // LocalSystem process token would require SeDebugPrivilege on their GUI.
+        let mut needed = 0;
+        QueryServiceConfigW(service, std::ptr::null_mut(), 0, &mut needed);
+        if needed == 0 || needed > 16384 {
+            CloseServiceHandle(service);
+            return Err(IpcError::UntrustedPeer);
+        }
+        let mut buffer = vec![0usize; (needed as usize).div_ceil(std::mem::size_of::<usize>())];
+        let config = buffer.as_mut_ptr() as *mut QUERY_SERVICE_CONFIGW;
+        let ok = QueryServiceConfigW(service, config, needed, &mut needed);
+        CloseServiceHandle(service);
+        if ok == 0
+            || (*config).dwServiceType != SERVICE_WIN32_OWN_PROCESS
+            || (*config).lpServiceStartName.is_null()
+        {
+            return Err(IpcError::UntrustedPeer);
+        }
+        let account = (*config).lpServiceStartName;
+        let mut len = 0;
+        while len < 64 && *account.add(len) != 0 {
+            len += 1;
+        }
+        if len == 64
+            || !String::from_utf16_lossy(std::slice::from_raw_parts(account, len))
+                .eq_ignore_ascii_case("LocalSystem")
+        {
+            return Err(IpcError::UntrustedPeer);
         }
         Ok(status.dwProcessId)
     }
