@@ -1,6 +1,6 @@
 # Status — 2026-11-13
 
-Version 0.3.1 is in release validation.
+Version 0.3.1: Windows system TUN development release.
 
 ## Implemented
 
@@ -11,12 +11,18 @@ Version 0.3.1 is in release validation.
 - IPC v2 typed connect/disconnect/status, authenticated SID ownership, startup cancellation and bounded startup.
 - Service owns the connection independently of the GUI and monitors both engines every 500 ms.
 - Connect/disconnect UI polls service state; service loss removes connected indication.
-- Explicit service installation bootstrap, version 0.3.1 package and Desktop delivery planned.
+- Explicit service installation bootstrap, versioned 0.3.1 ZIP and verified extraction to Desktop/Moth/0.3.1 with a launch shortcut.
 
 ## Verification
 
-Local portable/configuration/IPC/UI checks and disposable Windows TUN/SCM CI are running.
-Do not interpret the presence of implementation as completed network acceptance.
+- Implementation adc4f2c: Windows and Linux CI passed: https://github.com/Bu11t0N/Moth-Desktop/actions/runs/43434893973
+- Disposable Windows VM: real TCP/UDP over IPv4/IPv6 through TUN, disconnect/reconnect, teardown and preservation of physical adapter DNS/routes.
+- Installed SCM service: separate non-administrator account connects through the real HTTPS verifier; explicit DNS query to the TUN gateway succeeds.
+- SID isolation rejects another account's disconnect. Reconnect, forced Xray termination, failure reporting, recovery and service shutdown/restart pass.
+- Native config matrix, loopback credential failure, DPAPI, actual pipe spoof/version/frame handling, ownership unit test, formatting and Clippy pass.
+- Seven Playwright scenarios and TypeScript/Vite build pass, including cancellation and loss of service. These are browser adapter tests, not native WebView2/DPI acceptance.
+- Windows release EXE version 0.3.1 verified. ZIP extracted to Desktop/Moth/0.3.1; every file checksum and shortcut target verified.
+- Final ZIP SHA-256: 3c9155623b46ab42533eb8d2fe070986bb1d0cdbc185f162c12d207639460816.
 No host network settings were changed for development tests.
 
 ## Limitations
