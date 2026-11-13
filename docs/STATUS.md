@@ -11,7 +11,7 @@ Version 0.3.2: native tray lifecycle update over the 0.3.1 system TUN baseline.
 - IPC v2 typed connect/disconnect/status, authenticated SID ownership, startup cancellation and bounded startup.
 - Service owns the connection independently of the GUI and monitors both engines every 500 ms.
 - Connect/disconnect UI polls service state; service loss removes connected indication.
-- Explicit service installation bootstrap, versioned 0.3.1 ZIP and verified extraction to Desktop/Moth/0.3.1 with a launch shortcut.
+- Explicit service installation bootstrap and versioned Windows ZIP packages.
 
 - Added native tray, close-to-tray, single-instance reopen, native status polling and graceful Exit with confirmed owner disconnection.
 - Added a Connect/Exit barrier and strict SCM stopped-state check; no service protocol change. Installed service 0.3.1 is compatible.
@@ -22,10 +22,8 @@ Version 0.3.2: native tray lifecycle update over the 0.3.1 system TUN baseline.
 - Formatting, Clippy with warnings denied, TypeScript/Vite and seven Playwright tests pass.
 - Implementation 2512223: Windows and Linux CI passed: https://github.com/Bu11t0N/Moth-Desktop/actions/runs/43450775552
 - Disposable Windows VM: native tray registered; real VPN remains connected after the native window close event; a real second GUI process exits and restores the same window; the Exit menu handler confirms disconnection and leaves no active TUN adapter.
-- Local native release 0.3.2: observed the Moth icon in the Windows tray overflow; native close hides the window while preserving PID; second launch exits with code 0 and restores the same HWND/PID. Host VPN was disconnected throughout this GUI check and no host networking was changed.
 - Native lifecycle acceptance is debug-only and not compiled into release builds.
 - GUI 0.3.2 works with installed service 0.3.1 (IPC v2); no service upgrade is required.
-- 0.3.2 ZIP extracted and every file hash verified under the current Windows Desktop known folder (OneDrive/Desktop/Moth/0.3.2). The current and earlier Desktop launch shortcuts point to the new version; 0.3.1 files are preserved.
 - 0.3.2 ZIP SHA-256: 84b67ac6d5776cf81c097317874f67d497d09e2e263b99673482f9caaf12ad69.
 
 ## 0.3.1 verification
@@ -36,9 +34,8 @@ Version 0.3.2: native tray lifecycle update over the 0.3.1 system TUN baseline.
 - SID isolation rejects another account's disconnect. Reconnect, forced Xray termination, failure reporting, recovery and service shutdown/restart pass.
 - Native config matrix, loopback credential failure, DPAPI, actual pipe spoof/version/frame handling, ownership unit test, formatting and Clippy pass.
 - Seven Playwright scenarios and TypeScript/Vite build pass, including cancellation and loss of service. These are browser adapter tests, not native WebView2/DPI acceptance.
-- Windows release EXE version 0.3.1 verified. ZIP extracted to Desktop/Moth/0.3.1; every file checksum and shortcut target verified.
+- Windows EXE version and packaged file checksums verified for 0.3.1.
 - Final ZIP SHA-256: 3c9155623b46ab42533eb8d2fe070986bb1d0cdbc185f162c12d207639460816.
-No host network settings were changed for development tests.
 
 ## Limitations
 
