@@ -211,13 +211,15 @@ fn main() {
             tray::show_main(app)
         }))
         .setup(|app| {
-            let mut directory = app.path().app_local_data_dir()?;
-            // Development/test override only; release cannot be redirected by env vars.
-            if cfg!(debug_assertions) {
-                if let Some(path) = std::env::var_os("MOTH_DEV_DATA_DIR") {
-                    directory = path.into();
-                }
-            }
+            // Resolve explicit test storage before querying a Windows known folder:
+            // a temporary CI account may not have initialized shell folders yet.
+            #[cfg(debug_assertions)]
+            let directory = match std::env::var_os("MOTH_DEV_DATA_DIR") {
+                Some(path) => path.into(),
+                None => app.path().app_local_data_dir()?,
+            };
+            #[cfg(not(debug_assertions))]
+            let directory = app.path().app_local_data_dir()?;
             let store = ProfileStore::new(directory);
             let library = store.load()?;
             let engine_directory = if cfg!(debug_assertions) {
