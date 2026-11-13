@@ -57,7 +57,7 @@ test("native adapter renders untrusted summaries as text and manages selected se
         return {
           profiles,
           selected: profiles.length ? "test-id" : null,
-          version: "0.3.1",
+          version: "0.3.2",
           capabilities: {
             platform: "windows",
             secureStorage: true,
@@ -143,7 +143,7 @@ test("server probe reports measured result without enabling system VPN", async (
             },
           ],
           selected: "probe-id",
-          version: "0.3.1",
+          version: "0.3.2",
           engines: [
             {
               name: "xray",
@@ -187,7 +187,7 @@ test("authenticated service health is separate from VPN protection", async ({
       invoke: async (cmd: string) => {
         if (cmd === "service_status")
           return {
-            version: "0.3.1",
+            version: "0.3.2",
             protocol: 1,
             systemTunnel: false,
             engines: [],
@@ -195,7 +195,7 @@ test("authenticated service health is separate from VPN protection", async ({
         return {
           profiles: [],
           selected: null,
-          version: "0.3.1",
+          version: "0.3.2",
           engines: [],
           capabilities: {
             platform: "windows",
@@ -213,7 +213,7 @@ test("authenticated service health is separate from VPN protection", async ({
     .getByRole("button", { name: "Проверить связь со службой", exact: true })
     .click();
   await expect(page.getByRole("status")).toContainText(
-    "Связь установлена · 0.3.1",
+    "Связь установлена · 0.3.2",
   );
   await page.screenshot({ path: "test-results/service.png", fullPage: true });
   await page.getByRole("button", { name: "Главная", exact: true }).click();
@@ -268,7 +268,7 @@ test("VPN follows service transitions and loses connected state when service dis
             },
           ],
           selected: "vpn",
-          version: "0.3.1",
+          version: "0.3.2",
           engines: [],
           capabilities: {
             platform: "windows",
@@ -348,7 +348,7 @@ test("owner can cancel a connecting operation without a stale connected state", 
             },
           ],
           selected: "vpn",
-          version: "0.3.1",
+          version: "0.3.2",
           engines: [],
           capabilities: {
             platform: "windows",

@@ -114,6 +114,46 @@ impl ServiceClient {
     }
 }
 
+/// Used by graceful GUI exit. A missing pipe does not prove that the service
+/// stopped: it may still own an active tunnel while its pipe is busy/broken.
+pub fn service_is_stopped() -> Result<bool, IpcError> {
+    unsafe {
+        let manager = OpenSCManagerW(std::ptr::null(), std::ptr::null(), SC_MANAGER_CONNECT);
+        if manager.is_null() {
+            return Err(IpcError::AccessDenied);
+        }
+        let service = OpenServiceW(
+            manager,
+            security::wide(SERVICE_NAME).as_ptr(),
+            SERVICE_QUERY_STATUS,
+        );
+        let error = GetLastError();
+        CloseServiceHandle(manager);
+        if service.is_null() {
+            return if error == ERROR_SERVICE_DOES_NOT_EXIST {
+                Ok(true)
+            } else {
+                Err(IpcError::AccessDenied)
+            };
+        }
+        let mut status: SERVICE_STATUS_PROCESS = std::mem::zeroed();
+        let mut size = 0;
+        let ok = QueryServiceStatusEx(
+            service,
+            SC_STATUS_PROCESS_INFO,
+            (&mut status as *mut SERVICE_STATUS_PROCESS).cast(),
+            std::mem::size_of_val(&status) as u32,
+            &mut size,
+        );
+        CloseServiceHandle(service);
+        if ok == 0 {
+            Err(IpcError::Unavailable)
+        } else {
+            Ok(status.dwCurrentState == SERVICE_STOPPED)
+        }
+    }
+}
+
 fn service_pid() -> Result<u32, IpcError> {
     // SCM is the trust anchor; unprivileged users cannot replace its service registration.
     unsafe {

@@ -79,3 +79,11 @@ Protocol v2 adds SID-owned connection lifecycle; the stable pipe endpoint remain
 Normal console development mode refuses system connect/disconnect. Real TUN acceptance requires a disposable CI Windows VM.
 
 Sources reviewed at pinned versions: [Xray Windows socket binding](https://github.com/XTLS/Xray-core/blob/1b1647cd9ddf0abc34b981d4611fc03bcac1ca74/transport/internet/sockopt_windows.go), [sing-tun adapter lifecycle](https://github.com/SagerNet/sing-tun/blob/v0.7.13/tun_windows.go), [embedded Wintun loader](https://github.com/SagerNet/sing-tun/blob/v0.7.13/internal/wintun/dll_windows.go).
+
+## ADR-008: desktop tray lifecycle in 0.3.2
+
+The Tauri adapter owns a native tray and the official single-instance plugin. CloseRequested hides the retained main webview without invoking IPC or terminating the app. Tray left click, Open and a second process restore the existing window. A Rust timer polls authenticated service state even when WebView timers are throttled.
+
+Disconnect and Exit share the same bounded stop path. It blocks new GUI Connect commands, cancels an already accepted connect, waits for outstanding Connect leases, then confirms disconnection again. Exit is authorized only after this barrier succeeds. A missing pipe is insufficient evidence: SCM must confirm that the service is absent/stopped before an unavailable service is treated as safe to exit. Other-account connections are never stopped. Errors retain the tray/process and restore the window with a user-visible message. No protocol change is needed; service 0.3.1 remains supported.
+
+Debug-only disposable Windows CI acceptance exercises actual native close events with live TUN, a real second process, and the same tray menu dispatch for Exit. Its driver is excluded by debug_assertions from release binaries. This does not simulate protection and does not run network tests on the developer host.

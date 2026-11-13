@@ -67,6 +67,30 @@ try {
     (Get-Service MothDesktopService).WaitForStatus('Running',[TimeSpan]::FromSeconds(20))
     $fresh=Invoke-Client '--tunnel-status' '' $Credential
     if($fresh.phase -ne 'disconnected'){throw 'Restart did not reset connection state'}
+    # Native debug GUI, real window events/single-instance process and the same
+    # production service. No UI test driver is compiled into release packages.
+    $nativeData=Join-Path (Split-Path $PSScriptRoot) ('.local\native-tray-'+[Guid]::NewGuid().ToString('N'))
+    $nativeInfo=[Diagnostics.ProcessStartInfo]::new((Join-Path $PSScriptRoot '..\target\debug\moth-desktop.exe'))
+    $nativeInfo.UseShellExecute=$false;$nativeInfo.CreateNoWindow=$true
+    $nativeInfo.RedirectStandardInput=$true
+    $nativeInfo.Environment['MOTH_NATIVE_TRAY_TEST']='1'
+    $nativeInfo.Environment['MOTH_DEV_DATA_DIR']=$nativeData
+    $native=[Diagnostics.Process]::Start($nativeInfo)
+    try {
+        $native.StandardInput.Write($link);$native.StandardInput.Close()
+        if(-not $native.WaitForExit(90000)){$native.Kill();throw 'Native tray lifecycle timed out'}
+        $evidencePath=Join-Path $nativeData 'native-tray-result.json'
+        if(-not (Test-Path -LiteralPath $evidencePath)){throw 'Native tray lifecycle evidence missing'}
+        $evidence=Get-Content -LiteralPath $evidencePath -Raw | ConvertFrom-Json
+        if($native.ExitCode -ne 0 -or -not $evidence.trayRegistered -or -not $evidence.closeKeptVpn -or -not $evidence.secondLaunchRestored -or -not $evidence.exitDisconnected){
+            if($evidence.error){Write-Output $evidence.error}
+            throw 'Native tray lifecycle assertions failed'
+        }
+        $afterExit=Invoke-Client '--tunnel-status'
+        if($afterExit.phase -ne 'disconnected'){throw 'Tray Exit left the VPN running'}
+        if(@(Get-NetAdapter | Where-Object {$_.Name -eq 'Moth' -and $_.Status -eq 'Up'}).Count){throw 'Tray Exit left TUN active'}
+        Write-Output 'Native tray registration, close-to-tray with live VPN, second-instance reopen and Exit disconnect passed.'
+    } finally {$native.Dispose()}
     Write-Output 'Standard-user connect, real HTTPS + DNS over TUN, SID isolation, reconnect, engine crash and service shutdown passed.'
 } finally {
     if(-not $fixture.HasExited){$fixture.Kill();$fixture.WaitForExit()}

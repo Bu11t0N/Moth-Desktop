@@ -9,11 +9,12 @@ build = "build.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-single-instance = "2"
 moth-core = { path = "../crates/moth-core" }
 moth-platform = { path = "../crates/moth-platform" }
 moth-engine = { path = "../crates/moth-engine" }
 moth-ipc = {path="../crates/moth-ipc"}
-tokio = {version="1",features= ["sync"] }
+tokio = {version="1",features= ["sync","time"] }
 serde.workspace = true
 uuid.workspace = true

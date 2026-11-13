@@ -1,6 +1,6 @@
 # Status — 2026-11-13
 
-Version 0.3.1: Windows system TUN development release.
+Version 0.3.2 is in validation. Version 0.3.1 remains the released system TUN baseline.
 
 ## Implemented
 
@@ -13,7 +13,16 @@ Version 0.3.1: Windows system TUN development release.
 - Connect/disconnect UI polls service state; service loss removes connected indication.
 - Explicit service installation bootstrap, versioned 0.3.1 ZIP and verified extraction to Desktop/Moth/0.3.1 with a launch shortcut.
 
-## Verification
+- Added native tray, close-to-tray, single-instance reopen, native status polling and graceful Exit with confirmed owner disconnection.
+- Added a Connect/Exit barrier and strict SCM stopped-state check; no service protocol change. Installed service 0.3.1 is compatible.
+
+## 0.3.2 verification
+
+- Local Rust tests pass, including two new tray shutdown tests (confirmation, IPC failure and other-account isolation).
+- Formatting, Clippy with warnings denied, TypeScript/Vite and seven Playwright tests pass.
+- Native tray/live-VPN lifecycle acceptance and Windows/Linux CI are pending.
+
+## 0.3.1 verification
 
 - Implementation adc4f2c: Windows and Linux CI passed: https://github.com/Bu11t0N/Moth-Desktop/actions/runs/43434893973
 - Disposable Windows VM: real TCP/UDP over IPv4/IPv6 through TUN, disconnect/reconnect, teardown and preservation of physical adapter DNS/routes.

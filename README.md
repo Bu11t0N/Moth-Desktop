@@ -3,7 +3,7 @@
 Windows-first desktop companion to [Moth for Android](https://github.com/Bu11t0N/Moth).
 Rust domain/platform layers and a Tauri 2 + TypeScript interface, designed for a later Linux port.
 
-**0.3.1 development release: Windows system TUN connection. Requires the installed service. Kill switch and automatic network recovery are not implemented.**
+**0.3.2 development release: Windows system TUN connection. Requires the installed service. Kill switch and automatic network recovery are not implemented.**
 
 ## Implemented
 
@@ -18,6 +18,8 @@ Rust domain/platform layers and a Tauri 2 + TypeScript interface, designed for a
 - Windows Job Object cleanup, bounded process lifetimes, config through stdin, suppressed core logs.
 - Windows Service + authenticated/versioned named pipe, optional service-backed probes.
 - Connect/disconnect via authenticated service, per-account connection ownership, engine monitoring.
+- Native tray with open/disconnect/exit, close-to-tray, single instance and verified disconnect before Exit.
+- GUI 0.3.2 remains compatible with installed service 0.3.1 (IPC v2); no service upgrade is needed for tray support.
 - Explicit Install-Service.cmd bootstrap with Windows UAC; the GUI runs as an ordinary user.
 
 Unsupported URI options are rejected rather than silently discarded. HTTP subscription fetching,

@@ -47,3 +47,7 @@ Job Object termination and kill-on-drop contain both children on cancellation/se
 --console uses an explicit development pipe and same-user/PID validation. It refuses LocalSystem and system connect/disconnect commands. The GUI never falls back to it. Local tests never modify networking.
 --status and --tunnel-status are authenticated production diagnostics. --connect reads a bounded link from stdin (never command-line arguments); --disconnect uses the same SID ownership rules.
 Disposable CI VM tests: scripts/test-tun.ps1 and scripts/test-service-scm.ps1, including test-service-tunnel.ps1. See STATUS.md for actual results; configured tests are not evidence of passing acceptance.
+
+## GUI 0.3.2 tray
+
+The main-window close button hides to tray and preserves the running GUI and service connection. Tray Open/left-click or launching the shortcut restores the same instance. Tray Disconnect stops only the caller-owned tunnel. Exit blocks new Connect requests and confirms disconnection before ending the GUI; a pipe error retains the application unless SCM independently confirms the service is stopped/absent. The LocalSystem service itself stays installed/running for the next GUI launch. Existing 0.3.1 services support these IPC v2 commands without an upgrade.

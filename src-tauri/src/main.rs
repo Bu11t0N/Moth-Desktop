@@ -5,6 +5,9 @@ use serde::Serialize;
 use std::sync::Mutex;
 use tauri::Manager;
 use uuid::Uuid;
+#[cfg(all(windows, debug_assertions))]
+mod native_acceptance;
+mod tray;
 
 struct AppState {
     store: ProfileStore,
@@ -184,7 +187,13 @@ async fn disconnect_vpn() -> Result<moth_ipc::TunnelState, String> {
 async fn connect_vpn(
     id: Uuid,
     state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<moth_ipc::TunnelState, String> {
+    let lifecycle = app.state::<tray::DesktopLifecycle>();
+    let _lease = lifecycle.controls.read().await;
+    if lifecycle.busy.load(std::sync::atomic::Ordering::Acquire) {
+        return Err("Дождись завершения отключения VPN".into());
+    }
     let link = {
         let library = state.library.lock().map_err(|_| "Хранилище недоступно")?;
         let profile = library
@@ -198,6 +207,9 @@ async fn connect_vpn(
 }
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
+            tray::show_main(app)
+        }))
         .setup(|app| {
             let mut directory = app.path().app_local_data_dir()?;
             // Development/test override only; release cannot be redirected by env vars.
@@ -222,6 +234,7 @@ fn main() {
                 engine_status,
                 probe_gate: tokio::sync::Mutex::new(()),
             });
+            tray::setup(app)?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -235,6 +248,7 @@ fn main() {
             connect_vpn,
             disconnect_vpn
         ])
-        .run(tauri::generate_context!())
-        .expect("Не удалось запустить Moth Desktop");
+        .build(tauri::generate_context!())
+        .expect("Не удалось запустить Moth Desktop")
+        .run(tray::run_event);
 }

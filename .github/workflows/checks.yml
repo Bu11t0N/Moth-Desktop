@@ -31,6 +31,8 @@ jobs:
       - run: npm test
       - run: cargo build -p moth-service --release --locked
       - run: npm run desktop:build -- --no-bundle
+      - name: Build native tray acceptance GUI (debug only)
+        run: npm run desktop:build -- --debug --no-bundle
       - name: Windows SCM install, authenticated health, stop/start and removal
         shell: pwsh
         run: ./scripts/test-service-scm.ps1
