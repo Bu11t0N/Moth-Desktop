@@ -5,6 +5,9 @@ Rust domain/platform layers and a Tauri 2 + TypeScript interface, designed for a
 
 **0.3.2 development release: Windows system TUN connection. Requires the installed service. Kill switch and automatic network recovery are not implemented.**
 
+See the [desktop roadmap and Android feature comparison](docs/ROADMAP.ru.md)
+for the planned implementation order and acceptance criteria.
+
 ## Implemented
 
 - Local VLESS/Trojan URI and Base64-list import with explicit validation and atomic batches.

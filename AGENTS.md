@@ -1,6 +1,6 @@
 # Moth Desktop development
 
-- Read docs/SPEC.ru.md, docs/ARCHITECTURE.md and docs/STATUS.md before changing functionality.
+- Read docs/SPEC.ru.md, docs/ARCHITECTURE.md, docs/STATUS.md and docs/ROADMAP.ru.md before changing functionality.
 - Windows is the first supported runtime; retain a compiling Linux boundary.
 - Keep Tauri out of moth-core and moth-platform. UI must consume summaries, not credentials/config JSON.
 - Never claim connected/protected from UI state alone. No simulated VPN, fake latency or insecure persistence fallback.
