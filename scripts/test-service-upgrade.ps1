@@ -54,7 +54,10 @@ foreach ($baseline in @($Baseline031Directory,$Baseline032Directory)) {
     if ($before -notin @('0.3.1','0.3.2')) { throw 'Unexpected baseline version.' }
     $oldHash=(Get-FileHash -LiteralPath (Join-Path $root 'moth-service.exe')).Hash
     $bad=Join-Path $work ('tampered-'+$before)
-    Copy-Item -LiteralPath $candidate -Destination $bad -Recurse
+    New-Item -ItemType Directory -Path (Join-Path $bad 'engines') -Force | Out-Null
+    foreach($relative in @('moth-service.exe','engines\xray.exe','engines\sing-box.exe')) {
+        Copy-Item -LiteralPath (Join-Path $candidate $relative) -Destination (Join-Path $bad $relative)
+    }
     [IO.File]::AppendAllText((Join-Path $bad 'engines\xray.exe'),'modified')
     $rejected=$false
     try { & $installer -Action Install -PackageDirectory $bad } catch { $rejected=$true }

@@ -31,11 +31,11 @@ Publication remains gated on target-platform acceptance; the checks below distin
 
 - Rust workspace unit/integration tests, fmt and Clippy with warnings denied pass. System-network tests are excluded from host execution.
 - TypeScript/Vite and ten Playwright scenarios pass, including IPC v2 service 0.3.1 and clearing stale diagnostics.
-- Cross-compilation checks pass for moth-core, moth-platform and moth-ipc on x86_64-unknown-linux-gnu. The full Linux engine/service CI job is configured but has not run for this candidate.
+- Cross-compilation checks pass for moth-core, moth-platform and moth-ipc on x86_64-unknown-linux-gnu. The full Linux engine/service CI job passes for implementation 6df7e67 in [the fresh review run](https://github.com/Bu11t0N/Moth-Desktop/actions/runs/43502957082).
 - Disposable Windows 10 x64 VM: clean installation, updates from both 0.3.1 and 0.3.2, modified-core/unsafe-ACL refusal, forced post-start failure rollback, repeated/stopped update, remove/reinstall and unchanged decryptable DPAPI data pass.
-- The pinned previous-release download script passes SHA-256 verification. New upgrade acceptance is configured in Windows CI; configuration is not a passing CI result.
+- The pinned previous-release download script passes SHA-256 verification. Fresh Windows/Linux checks run on review/0.3.3. Windows acceptance outcomes and artifacts are recorded in the linked review run; only completed successful steps count as evidence.
 - Disposable VM: ordinary-user authentication passes. External HTTPS/DoH reachability passes, but the service-backed VPN fixture fails its HTTPS connection check on both candidate 0.3.3 and baseline 0.3.2. The separate TUN test reaches the IPv4 fixture, then fails the IPv6 fixture with HostUnreachable.
-- Therefore real service VPN/native tray acceptance is NOT a passing 0.3.3 result. Windows 10 is outside the initial support matrix; target Windows 11 acceptance and fresh Windows/Linux CI are required before publication. Previous 0.3.1/0.3.2 evidence below is historical, not substituted for this gate.
+- That Windows 10 VM is NOT a passing service VPN/native tray acceptance result; it does not replace fresh CI results or target-platform acceptance. Windows 10 is outside the initial support matrix; target Windows 11 acceptance and successful full Windows/Linux CI remain publication requirements. Previous 0.3.1/0.3.2 evidence below is historical, not substituted for this gate.
 - R0 remains partial: stage-specific failures, redacted diagnostic journal/export, tray Connect, signed automatic updates and power-loss recovery are pending.
 
 ## 0.3.2 verification
