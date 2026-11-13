@@ -5,7 +5,7 @@ test("preview never claims protection; navigation and import failure are honest"
 }) => {
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "Твоя сторона сети." }),
+    page.getByRole("heading", { name: "Подключение VPN" }),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Подключить" })).toBeDisabled();
   await expect(page.getByText("VPN сейчас не защищает трафик")).toBeVisible();
@@ -57,7 +57,7 @@ test("native adapter renders untrusted summaries as text and manages selected se
         return {
           profiles,
           selected: profiles.length ? "test-id" : null,
-          version: "0.3.2",
+          version: "0.3.3",
           capabilities: {
             platform: "windows",
             secureStorage: true,
@@ -89,7 +89,7 @@ test("native adapter renders untrusted summaries as text and manages selected se
     .getByRole("button", { name: "Удалить", exact: true })
     .click();
   await expect(
-    page.getByRole("heading", { name: "Здесь начнётся твой маршрут" }),
+    page.getByRole("heading", { name: "Нет серверов" }),
   ).toBeVisible();
 });
 
@@ -143,7 +143,7 @@ test("server probe reports measured result without enabling system VPN", async (
             },
           ],
           selected: "probe-id",
-          version: "0.3.2",
+          version: "0.3.3",
           engines: [
             {
               name: "xray",
@@ -187,15 +187,15 @@ test("authenticated service health is separate from VPN protection", async ({
       invoke: async (cmd: string) => {
         if (cmd === "service_status")
           return {
-            version: "0.3.2",
-            protocol: 1,
+            version: "0.3.3",
+            protocol: 2,
             systemTunnel: false,
-            engines: [],
+            engines: [{ name: "xray", version: "26.10.21", available: false }],
           };
         return {
           profiles: [],
           selected: null,
-          version: "0.3.2",
+          version: "0.3.3",
           engines: [],
           capabilities: {
             platform: "windows",
@@ -213,8 +213,11 @@ test("authenticated service health is separate from VPN protection", async ({
     .getByRole("button", { name: "Проверить связь со службой", exact: true })
     .click();
   await expect(page.getByRole("status")).toContainText(
-    "Связь установлена · 0.3.2",
+    "Связь установлена · 0.3.3",
   );
+  await expect(page.getByText("Совместим · IPC 2")).toBeVisible();
+  await expect(page.getByText("26.10.21 · Недоступно")).toBeVisible();
+  await expect(page.getByText("Не подтверждён", { exact: true })).toBeVisible();
   await page.screenshot({ path: "test-results/service.png", fullPage: true });
   await page.getByRole("button", { name: "Главная", exact: true }).click();
   await expect(page.getByText("VPN сейчас не защищает трафик")).toBeVisible();
@@ -268,7 +271,7 @@ test("VPN follows service transitions and loses connected state when service dis
             },
           ],
           selected: "vpn",
-          version: "0.3.2",
+          version: "0.3.3",
           engines: [],
           capabilities: {
             platform: "windows",
@@ -348,7 +351,7 @@ test("owner can cancel a connecting operation without a stale connected state", 
             },
           ],
           selected: "vpn",
-          version: "0.3.2",
+          version: "0.3.3",
           engines: [],
           capabilities: {
             platform: "windows",
@@ -369,4 +372,65 @@ test("owner can cancel a connecting operation without a stale connected state", 
     page.getByRole("button", { name: "Подключить", exact: true }),
   ).toBeEnabled();
   await expect(page.getByText("VPN сейчас не защищает трафик")).toBeVisible();
+});
+
+test("diagnostics support IPC 2 service 0.3.1 and clear stale health after failure", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const w = window as unknown as {
+      isTauri: boolean;
+      __TAURI_INTERNALS__: unknown;
+    };
+    w.isTauri = true;
+    let checks = 0;
+    w.__TAURI_INTERNALS__ = {
+      invoke: async (cmd: string) => {
+        if (cmd === "service_status") {
+          if (++checks > 1) throw new Error("Служба недоступна");
+          return {
+            version: "0.3.1",
+            protocol: 2,
+            systemTunnel: true,
+            engines: [
+              { name: "xray", version: "26.10.21", available: true },
+              { name: "sing-box", version: "1.12.25", available: true },
+            ],
+          };
+        }
+        if (cmd === "tunnel_status")
+          return { phase: "disconnected", ownedByCaller: false, error: null };
+        return {
+          profiles: [],
+          selected: null,
+          version: "0.3.3",
+          engines: [],
+          capabilities: {
+            platform: "windows",
+            secureStorage: true,
+            systemTunnel: true,
+            killSwitch: false,
+          },
+        };
+      },
+    };
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Настройки", exact: true }).click();
+  const refresh = page.getByRole("button", {
+    name: "Проверить связь со службой",
+    exact: true,
+  });
+  await refresh.click();
+  await expect(page.getByRole("status")).toContainText(
+    "Связь установлена · 0.3.1",
+  );
+  await expect(
+    page.getByText("Доступен через службу", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("1.12.25 · Проверено")).toBeVisible();
+  await refresh.click();
+  await expect(page.getByRole("status")).toContainText("Служба недоступна");
+  await expect(page.getByText("Ядро службы: sing-box")).toHaveCount(0);
+  await expect(page.getByText("Не подтверждён", { exact: true })).toBeVisible();
 });

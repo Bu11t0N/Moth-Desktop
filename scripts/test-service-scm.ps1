@@ -1,7 +1,9 @@
-# SCM acceptance ONLY on a disposable GitHub-hosted Windows runner, never the developer host.
+# SCM acceptance ONLY on a disposable Windows VM, never the developer host.
 #requires -Version 7.0
+param([switch]$DisposableVm)
 $ErrorActionPreference = 'Stop'
-if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows') { throw 'This smoke test requires a disposable GitHub Actions Windows runner.' }
+. (Join-Path $PSScriptRoot 'Assert-DisposableVm.ps1')
+Assert-DisposableWindowsVm -DisposableVm:$DisposableVm
 $repo = Split-Path $PSScriptRoot
 $package = Join-Path $repo 'target\release'
 $installed = $false
@@ -26,14 +28,14 @@ try {
         Add-LocalGroupMember -SID 'S-1-5-32-545' -Member "$env:COMPUTERNAME\$testUser"
     }
     $credential = [PSCredential]::new("$env:COMPUTERNAME\$testUser",$password)
-    $userOut = Join-Path $env:RUNNER_TEMP 'moth-standard-user-health.json'
-    $userErr = Join-Path $env:RUNNER_TEMP 'moth-standard-user-error.txt'
+    $userOut = Join-Path ([IO.Path]::GetTempPath()) 'moth-standard-user-health.json'
+    $userErr = Join-Path ([IO.Path]::GetTempPath()) 'moth-standard-user-error.txt'
     $process = Start-Process -FilePath (Join-Path $env:ProgramFiles 'Moth Desktop\moth-service.exe') -ArgumentList '--status' -Credential $credential -LoadUserProfile -WorkingDirectory $env:SystemRoot -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput $userOut -RedirectStandardError $userErr
     if ($process.ExitCode -ne 0) { if(Test-Path $userErr){Get-Content $userErr}; throw 'Non-administrator client could not authenticate the service' }
     $health = Get-Content -LiteralPath $userOut -Raw | ConvertFrom-Json
     if ($health.protocol -ne 2 -or -not $health.systemTunnel) { throw 'Unexpected non-administrator health response' }
     Write-Output 'Non-administrator service authentication passed.'
-    & (Join-Path $PSScriptRoot 'test-service-tunnel.ps1') -Credential $credential
+    & (Join-Path $PSScriptRoot 'test-service-tunnel.ps1') -Credential $credential -DisposableVm:$DisposableVm
 } finally {
     if ($createdUser) { Remove-LocalUser -Name $testUser }
     if ($installed) { & (Join-Path $PSScriptRoot 'Service.ps1') -Action Remove }

@@ -110,20 +110,22 @@ async fn handle(
         }
     } else {
         match &request.command {
-            Command::Status {} => Reply::Status(Health {
-                version: health.version.clone(),
-                protocol: health.protocol,
-                system_tunnel: health.system_tunnel,
-                engines: health
-                    .engines
-                    .iter()
-                    .map(|e| EngineInfo {
-                        name: e.name.clone(),
-                        version: e.version.clone(),
-                        available: e.available,
-                    })
-                    .collect(),
-            }),
+            Command::Status {} => {
+                let status = engines.status();
+                Reply::Status(Health {
+                    version: health.version.clone(),
+                    protocol: health.protocol,
+                    system_tunnel: health.system_tunnel && status.iter().all(|e| e.available),
+                    engines: status
+                        .into_iter()
+                        .map(|e| EngineInfo {
+                            name: e.name,
+                            version: e.version,
+                            available: e.available,
+                        })
+                        .collect(),
+                })
+            }
             Command::TunnelStatus {} => tunnel.status(&caller).await,
             Command::Disconnect {} if !development => tunnel.disconnect(&caller).await,
             Command::Connect { link } if !development => match moth_core::import_links(link) {

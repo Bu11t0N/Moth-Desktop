@@ -1,8 +1,9 @@
-# Real service + standard-user data-plane acceptance. Disposable CI VM only.
+# Real service + standard-user data-plane acceptance. Disposable Windows VM only.
 #requires -Version 7.0
-param([Parameter(Mandatory)][PSCredential]$Credential)
+param([Parameter(Mandatory)][PSCredential]$Credential,[switch]$DisposableVm)
 $ErrorActionPreference='Stop'
-if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows'){throw 'Disposable Windows VM required'}
+. (Join-Path $PSScriptRoot 'Assert-DisposableVm.ps1')
+Assert-DisposableWindowsVm -DisposableVm:$DisposableVm
 $serviceExe=Join-Path $env:ProgramFiles 'Moth Desktop\moth-service.exe'
 function Invoke-Client([string]$Argument,[string]$InputText='', [PSCredential]$AsUser=$null){
     $info=[Diagnostics.ProcessStartInfo]::new($serviceExe,$Argument)
@@ -40,6 +41,11 @@ try {
     $link="vless://$id@127.0.0.1:$port`?security=none&type=tcp"
     $connected=Invoke-Client '--connect' $link $Credential
     if($connected.phase -ne 'connected' -or -not $connected.ownedByCaller){throw 'Standard-user VPN did not pass real TUN HTTPS/DNS verification'}
+    $rejected=$false
+    try { & (Join-Path $PSScriptRoot 'Service.ps1') -Action Install -PackageDirectory (Join-Path $PSScriptRoot '..\target\release') } catch { $rejected=$true }
+    $stillConnected=Invoke-Client '--tunnel-status' '' $Credential
+    if(-not $rejected -or $stillConnected.phase -ne 'connected'){throw 'Installer interrupted or accepted an active tunnel'}
+
     $dns=Resolve-DnsName 'example.com' -Type A -Server '172.19.0.2' -DnsOnly -NoHostsFile
     if(-not @($dns | Where-Object IPAddress).Count){throw 'Explicit DNS query through the TUN gateway failed'}
     $other=Invoke-Client '--tunnel-status'
@@ -70,8 +76,14 @@ try {
     # Native debug GUI, real window events/single-instance process and the same
     # production service. No UI test driver is compiled into release packages.
     $nativeData=Join-Path (Split-Path $PSScriptRoot) ('.local\native-tray-'+[Guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $nativeData -Force | Out-Null
+    $nativeAcl=Get-Acl -LiteralPath $nativeData
+    $nativeSid=(Get-LocalUser -Name $Credential.UserName.Split('\')[-1]).SID
+    $nativeAcl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($nativeSid,'Modify','ContainerInherit, ObjectInherit','None','Allow'))
+    Set-Acl -LiteralPath $nativeData -AclObject $nativeAcl
     $nativeInfo=[Diagnostics.ProcessStartInfo]::new((Join-Path $PSScriptRoot '..\target\debug\moth-desktop.exe'))
     $nativeInfo.UseShellExecute=$false;$nativeInfo.CreateNoWindow=$true
+    $nativeInfo.UserName=$Credential.UserName.Split('\')[-1];$nativeInfo.Domain=$env:COMPUTERNAME;$nativeInfo.Password=$Credential.Password;$nativeInfo.LoadUserProfile=$true
     $nativeInfo.RedirectStandardInput=$true
     $nativeInfo.Environment['MOTH_NATIVE_TRAY_TEST']='1'
     $nativeInfo.Environment['MOTH_DEV_DATA_DIR']=$nativeData

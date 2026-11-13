@@ -214,8 +214,11 @@ mod acceptance {
         if std::env::var("MOTH_TUN_ACCEPTANCE").as_deref() != Ok("1") {
             return;
         }
-        assert_eq!(std::env::var("GITHUB_ACTIONS").as_deref(), Ok("true"));
-        assert_eq!(std::env::var("RUNNER_OS").as_deref(), Ok("Windows"));
+        assert!(
+            (std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true")
+                && std::env::var("RUNNER_OS").as_deref() == Ok("Windows"))
+                || std::env::var("MOTH_DISPOSABLE_VM").as_deref() == Ok("1")
+        );
         let engines = EngineSet::new(development_directory().unwrap());
         let fixture = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let target_port = fixture.local_addr().unwrap().port();

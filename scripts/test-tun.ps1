@@ -1,6 +1,8 @@
 #requires -Version 7.0
+param([switch]$DisposableVm)
 $ErrorActionPreference='Stop'
-if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows') { throw 'System tunnel tests require a disposable GitHub-hosted Windows VM.' }
+. (Join-Path $PSScriptRoot 'Assert-DisposableVm.ps1')
+Assert-DisposableWindowsVm -DisposableVm:$DisposableVm
 $interfaces=@(Get-NetAdapter | Where-Object Name -ne 'Moth' | Select-Object -ExpandProperty ifIndex)
 function Physical-Dns { @(Get-DnsClientServerAddress | Where-Object InterfaceIndex -in $interfaces | ForEach-Object { "$($_.InterfaceIndex)|$($_.AddressFamily)|$($_.ServerAddresses -join ',')" } | Sort-Object) -join "`n" }
 function Physical-Routes { @(Get-NetRoute | Where-Object InterfaceIndex -in $interfaces | ForEach-Object { "$($_.InterfaceIndex)|$($_.DestinationPrefix)|$($_.NextHop)|$($_.RouteMetric)" } | Sort-Object) }

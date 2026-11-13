@@ -1,4 +1,4 @@
-# Windows service — 0.3.1
+# Windows service — 0.3.3
 
 GUI (ordinary user) -> authenticated named pipe -> LocalSystem service -> pinned engines.
 The service owns the connection, independently of the GUI window. No connection is restored automatically after a service restart.
@@ -7,7 +7,11 @@ The service owns the connection, independently of the GUI window. No connection 
 
 Extract the whole Windows package and run Install-Service.cmd. The bootstrap requests Windows UAC and calls Service.ps1 using the built-in Windows PowerShell 5.1.
 It creates a protected fixed installation at %ProgramFiles%/Moth Desktop, copies only the service and two pinned cores (plus notices), validates ACLs, registers an automatic-start own-process LocalSystem service and verifies its health. Installation alone does not start a VPN.
-Existing directories/services are refused; in-place upgrade is not yet implemented. Remove an older service explicitly and review/move its preserved installation directory before a new installation.
+For an existing 0.3.1/0.3.2/0.3.3 service, disconnect VPN first, extract the new package separately and run its Install-Service.cmd. Do not overwrite a running GUI or delete the installation directory. Close the old GUI using tray Exit, then open the new GUI after installation.
+
+The installer authenticates the existing service with the new IPC v2 client, checks the fixed SCM executable path, LocalSystem account and existing production ACLs, rejects active tunnels and unknown service versions, and stages a complete service/core set in an administrator-owned directory under Program Files. It verifies pinned engine hashes before stopping the service. Only then does it stop the service, rename the previous directory, promote the staged set, validate production ACLs, start the candidate and check authenticated version/protocol/core health. A failure restores the previous directory and its previous running/stopped state. User DPAPI profiles are outside these directories and are never copied, decrypted or migrated by the installer.
+
+Previous installations remain in administrator-controlled `Moth Desktop.rollback-*` directories; failed candidates remain in `Moth Desktop.stage-*.failed`. These are retained for inspection rather than recursively deleted. Reinstallation after Remove reuses the preserved installation without manual cleanup. Manual package installation requires trusting the downloaded package; checksums are integrity checks, not publisher signatures. Automatic/signed updates, downgrade protection against a malicious administrator, and crash/power-loss recovery during directory promotion are not implemented. An unsuccessful automatic recovery produces an explicit error and preserves previous files for administrator review.
 
 Manual commands in administrator PowerShell, from the extracted package:
 
@@ -45,8 +49,12 @@ Job Object termination and kill-on-drop contain both children on cancellation/se
 ## Development and evidence
 
 --console uses an explicit development pipe and same-user/PID validation. It refuses LocalSystem and system connect/disconnect commands. The GUI never falls back to it. Local tests never modify networking.
---status and --tunnel-status are authenticated production diagnostics. --connect reads a bounded link from stdin (never command-line arguments); --disconnect uses the same SID ownership rules.
-Disposable CI VM tests: scripts/test-tun.ps1 and scripts/test-service-scm.ps1, including test-service-tunnel.ps1. See STATUS.md for actual results; configured tests are not evidence of passing acceptance.
+--status and --tunnel-status are authenticated production diagnostics. Status rechecks the pinned engine hashes; protocol availability is separate from an active VPN. --connect reads a bounded link from stdin (never command-line arguments); --disconnect uses the same SID ownership rules.
+Disposable CI VM tests: scripts/test-tun.ps1 and scripts/test-service-scm.ps1, including test-service-tunnel.ps1. Upgrade acceptance: `scripts/test-service-upgrade.ps1` takes fully extracted candidate, 0.3.1 and 0.3.2 packages. It requires a disposable Windows CI runner or explicit `-DisposableVm` plus VMware hardware detection. It tests modified-core and unsafe-ACL refusal, post-start failure rollback, repeated/stopped updates, removal/reinstallation and byte-identical decryptable DPAPI preservation. It refuses an existing installation/profile. Failure is injected into a test-only copy of the installer, with no production fault-injection setting.
+
+The service/network scripts also accept `-DisposableVm` after VMware hardware detection; the native GUI lifecycle is tested under a standard user. Windows release binaries are built through `scripts/build-windows.ps1`, which remaps compiler source paths and checks the resulting EXEs.
+
+See STATUS.md for actual results; configured tests are not evidence of passing acceptance.
 
 ## GUI 0.3.2 tray
 

@@ -3,7 +3,7 @@
 Windows-first desktop companion to [Moth for Android](https://github.com/Bu11t0N/Moth).
 Rust domain/platform layers and a Tauri 2 + TypeScript interface, designed for a later Linux port.
 
-**0.3.2 development release: Windows system TUN connection. Requires the installed service. Kill switch and automatic network recovery are not implemented.**
+**0.3.3 development candidate: Windows system TUN connection. Requires the installed service. Kill switch and automatic network recovery are not implemented.**
 
 See the [desktop roadmap and Android feature comparison](docs/ROADMAP.ru.md)
 for the planned implementation order and acceptance criteria.
@@ -22,8 +22,10 @@ for the planned implementation order and acceptance criteria.
 - Windows Service + authenticated/versioned named pipe, optional service-backed probes.
 - Connect/disconnect via authenticated service, per-account connection ownership, engine monitoring.
 - Native tray with open/disconnect/exit, close-to-tray, single instance and verified disconnect before Exit.
-- GUI 0.3.2 remains compatible with installed service 0.3.1 (IPC v2); no service upgrade is needed for tray support.
+- GUI 0.3.3 remains compatible with installed service 0.3.1 (IPC v2); no service upgrade is needed for tray support.
 - Explicit Install-Service.cmd bootstrap with Windows UAC; the GUI runs as an ordinary user.
+- Service/core version diagnostics with authenticated IPC compatibility and current service core hash checks.
+- Staged 0.3.1/0.3.2 service upgrades, startup verification, automatic failure rollback and unchanged DPAPI profiles.
 
 Unsupported URI options are rejected rather than silently discarded. HTTP subscription fetching,
 Clash/sing-box/Xray JSON imports, Android backups and other protocols are planned, not implemented.
@@ -44,12 +46,11 @@ npm run desktop:dev
 cargo test --workspace
 npm run engines:test
 cargo test -p moth-ipc -p moth-service
-cargo build -p moth-service --release
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 npm run build
 npm test
-npm run desktop:build -- --no-bundle
+./scripts/build-windows.ps1
 ```
 
 `npm run dev` opens a browser-only UI preview: no persistence, fake servers or simulated connection.
@@ -87,12 +88,11 @@ tests/                 Browser UI checks
 The domain/platform crates do not depend on Tauri. A later Iced frontend can reuse them;
 shipping two frontends is outside the first release. No Android repository files are changed.
 
-## Optional Windows service (0.3.0 development preview)
+## Windows service installation and update
 
 The fully extracted development ZIP includes `moth-service.exe` and `Service.ps1`.
-Normal use does not install a service. See [service architecture, manual setup and limits](docs/SERVICE.md).
-The service supports health/probes only; it does not yet enable a system-wide VPN.
-SCM acceptance runs only on disposable CI, not on the developer's host computer.
+Run Install-Service.cmd to install or update the service and pinned engines. Disconnect VPN and close the previous GUI using tray Exit first. See [installation, automatic rollback and limitations](docs/SERVICE.md).
+SCM/network acceptance runs only on disposable Windows CI or an explicitly selected VMware clone. `-DisposableVm` checks VMware hardware before enabling the debug/test drivers. Never run these tests on a normal workstation.
 
 ## License
 

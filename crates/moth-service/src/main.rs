@@ -9,10 +9,19 @@ mod tunnel;
 fn main() {
     let result = match std::env::args().nth(1).as_deref() {
         Some("--service") => scm::dispatch(),
-        Some("--check-install") => {
-            let root = std::env::current_exe()
-                .ok()
-                .and_then(|p| p.parent().map(std::path::Path::to_path_buf));
+        Some("--version") => {
+            println!("{}", env!("CARGO_PKG_VERSION"));
+            Ok(())
+        }
+        Some("--check-install" | "--check-installed") => {
+            let root = if std::env::args().nth(1).as_deref() == Some("--check-installed") {
+                std::env::var_os("ProgramFiles")
+                    .map(|p| std::path::PathBuf::from(p).join("Moth Desktop"))
+            } else {
+                std::env::current_exe()
+                    .ok()
+                    .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
+            };
             match root {
                 Some(root) => {
                     moth_ipc::windows::validate_installation(&root).map_err(|e| e.to_string())

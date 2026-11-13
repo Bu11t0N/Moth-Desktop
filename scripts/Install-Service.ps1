@@ -7,7 +7,7 @@ try {
         exit $process.ExitCode
     }
     & (Join-Path $PSScriptRoot 'Service.ps1') -Action Install -PackageDirectory $PSScriptRoot
-    Write-Host 'Moth service installed. Open moth-desktop.exe and connect.'
+    Write-Host 'Moth service installation/update verified. Open moth-desktop.exe and connect.'
     Read-Host 'Press Enter to close'
 } catch {
     Write-Host $_.Exception.Message -ForegroundColor Red

@@ -1,5 +1,5 @@
 #requires -Version 7.0
-param([string]$OutputDirectory=(Split-Path (Split-Path $PSScriptRoot)),[switch]$Desktop)
+param([string]$OutputDirectory=(Split-Path (Split-Path $PSScriptRoot)),[switch]$Desktop,[string]$BuildDirectory=(Join-Path (Split-Path $PSScriptRoot) 'target/release'))
 $ErrorActionPreference='Stop'
 $repo=Split-Path $PSScriptRoot
 $version=(Get-Content -LiteralPath (Join-Path $repo 'package.json') -Raw | ConvertFrom-Json).version
@@ -12,15 +12,25 @@ $zip=Join-Path $output "$name.zip"
 if((Test-Path -LiteralPath $package) -or (Test-Path -LiteralPath $zip)){throw 'Release output already exists; preserve published versions.'}
 New-Item -ItemType Directory -Path $package | Out-Null
 foreach($file in @('moth-desktop.exe','moth-service.exe')){
-    Copy-Item -LiteralPath (Join-Path $repo "target\release\$file") -Destination $package
+    Copy-Item -LiteralPath (Join-Path $BuildDirectory $file) -Destination $package
 }
 foreach($directory in @('engines','notices')){
-    Copy-Item -LiteralPath (Join-Path $repo "target\release\$directory") -Destination $package -Recurse
+    Copy-Item -LiteralPath (Join-Path $BuildDirectory $directory) -Destination $package -Recurse
 }
 foreach($file in @('Service.ps1','Install-Service.ps1','Install-Service.cmd')){
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $package
 }
 Copy-Item -LiteralPath (Join-Path $repo 'docs\RELEASE.ru.txt') -Destination (Join-Path $package 'README.txt')
+$serviceVersion=& (Join-Path $package 'moth-service.exe') --version
+if($LASTEXITCODE -ne 0 -or $serviceVersion -ne $version){throw 'Packaged service version mismatch'}
+$guiVersion=[Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $package 'moth-desktop.exe')).ProductVersion
+if($guiVersion -ne $version){throw 'Packaged desktop version mismatch'}
+$pins=Get-Content -LiteralPath (Join-Path $repo 'engines.lock.json') -Raw | ConvertFrom-Json
+foreach($core in @('xray','sing-box')){
+    $expected=$pins.engines.$core.platforms.'win32-x64'.binarySha256
+    if((Get-FileHash -LiteralPath (Join-Path $package "engines/$core.exe") -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected){throw 'Packaged core checksum mismatch'}
+}
+
 $hashes=@(Get-ChildItem -LiteralPath $package -File -Recurse | Sort-Object FullName | ForEach-Object {
     $relative=$_.FullName.Substring($package.Length+1).Replace('\','/')
     "$((Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $relative"

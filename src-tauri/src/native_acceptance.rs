@@ -5,8 +5,9 @@ use tauri::Manager;
 
 fn enabled() -> bool {
     std::env::var("MOTH_NATIVE_TRAY_TEST").as_deref() == Ok("1")
-        && std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true")
-        && std::env::var("RUNNER_OS").as_deref() == Ok("Windows")
+        && ((std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true")
+            && std::env::var("RUNNER_OS").as_deref() == Ok("Windows"))
+            || std::env::var("MOTH_DISPOSABLE_VM").as_deref() == Ok("1"))
 }
 fn output() -> PathBuf {
     PathBuf::from(std::env::var_os("MOTH_DEV_DATA_DIR").expect("isolated test data directory"))

@@ -87,3 +87,16 @@ The Tauri adapter owns a native tray and the official single-instance plugin. Cl
 Disconnect and Exit share the same bounded stop path. It blocks new GUI Connect commands, cancels an already accepted connect, waits for outstanding Connect leases, then confirms disconnection again. Exit is authorized only after this barrier succeeds. A missing pipe is insufficient evidence: SCM must confirm that the service is absent/stopped before an unavailable service is treated as safe to exit. Other-account connections are never stopped. Errors retain the tray/process and restore the window with a user-visible message. No protocol change is needed; service 0.3.1 remains supported.
 
 Debug-only disposable Windows CI acceptance exercises actual native close events with live TUN, a real second process, and the same tray menu dispatch for Exit. Its driver is excluded by debug_assertions from release binaries. This does not simulate protection and does not run network tests on the developer host.
+
+
+## ADR-009: diagnostics and manual service upgrades in 0.3.3
+
+IPC v2 remains compatible with service 0.3.1. Build capabilities describe implementation;
+runtime availability comes from authenticated service health and verified core hashes.
+Connection state remains independent: a healthy service never implies connected VPN.
+The installer accepts fixed installation paths only, validates existing SCM/ACL policy,
+stages the service and pinned cores together, and verifies the started candidate before
+success. Failure restores the prior files and service state; profiles remain in the user
+DPAPI store. A trusted manually downloaded ZIP is still required. Signed automatic updates
+and crash-consistent recovery are future work. Release compiler paths are remapped and
+EXEs are scanned; local build paths and debug data are excluded from release packages.

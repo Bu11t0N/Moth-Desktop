@@ -29,8 +29,15 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: npx playwright install chromium
       - run: npm test
-      - run: cargo build -p moth-service --release --locked
-      - run: npm run desktop:build -- --no-bundle
+      - name: Build release binaries without local build paths
+        shell: pwsh
+        run: ./scripts/build-windows.ps1
+      - name: Upgrade from pinned 0.3.1/0.3.2 packages and failure rollback
+        shell: pwsh
+        run: |
+          ./scripts/fetch-upgrade-baselines.ps1
+          Copy-Item scripts/Service.ps1 target/release/Service.ps1
+          ./scripts/test-service-upgrade.ps1 -CandidateDirectory target/release -Baseline031Directory target/upgrade-baselines/Moth-0.3.1-windows-x64 -Baseline032Directory target/upgrade-baselines/Moth-0.3.2-windows-x64
       - name: Build native tray acceptance GUI (debug only)
         run: npm run desktop:build -- --debug --no-bundle
       - name: Windows SCM install, authenticated health, stop/start and removal

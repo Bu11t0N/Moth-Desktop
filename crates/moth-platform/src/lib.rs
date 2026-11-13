@@ -143,8 +143,8 @@ fn unseal(_input: &[u8]) -> Result<Vec<u8>, StoreError> {
     Err(StoreError::Unsupported)
 }
 
-/// Explicit capabilities: the interface must never claim a VPN exists before
-/// the privileged service, TUN, DNS and filtering are actually implemented.
+/// Build capabilities only. Runtime availability must come from authenticated service health;
+/// neither this summary nor a running service implies an active/protected connection.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Capabilities {
@@ -157,7 +157,7 @@ pub fn capabilities() -> Capabilities {
     Capabilities {
         platform: std::env::consts::OS,
         secure_storage: cfg!(windows),
-        system_tunnel: false,
+        system_tunnel: cfg!(windows),
         kill_switch: false,
     }
 }

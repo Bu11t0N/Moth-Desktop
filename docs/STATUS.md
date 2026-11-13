@@ -1,6 +1,7 @@
 # Status — 2026-11-13
 
-Version 0.3.2: native tray lifecycle update over the 0.3.1 system TUN baseline.
+Version 0.3.3 candidate: service/core diagnostics, plain interface text and staged manual service upgrades.
+Publication remains gated on target-platform acceptance; the checks below distinguish passed tests from unresolved checks.
 
 ## Implemented
 
@@ -15,6 +16,27 @@ Version 0.3.2: native tray lifecycle update over the 0.3.1 system TUN baseline.
 
 - Added native tray, close-to-tray, single-instance reopen, native status polling and graceful Exit with confirmed owner disconnection.
 - Added a Connect/Exit barrier and strict SCM stopped-state check; no service protocol change. Installed service 0.3.1 is compatible.
+
+## 0.3.3 implemented
+
+- Plain screen/action/state names; connection headings reflect service-owned phases.
+- GUI/service/core versions, IPC v2 compatibility and separate build/runtime capabilities.
+- Service health rechecks pinned core hashes; unavailable/stale service diagnostics are cleared by the UI.
+- Existing service 0.3.1 remains compatible. No new IPC commands or arbitrary runtime engine/config paths.
+- Manual 0.3.1/0.3.2/0.3.3 service upgrades validate SCM configuration and existing ACLs, stage pinned cores before stop, verify the candidate and restore the previous files/state on startup failure.
+- DPAPI profiles are untouched by maintenance. Remove/reinstall needs no manual Program Files cleanup; previous/failed files are preserved for review.
+- Release build script remaps compiler paths, strips debug information and scans EXEs; packaging checks component versions and core hashes.
+
+## 0.3.3 verification and publication gate
+
+- Rust workspace unit/integration tests, fmt and Clippy with warnings denied pass. System-network tests are excluded from host execution.
+- TypeScript/Vite and eight Playwright scenarios pass, including IPC v2 service 0.3.1 and clearing stale diagnostics.
+- Cross-compilation checks pass for moth-core, moth-platform and moth-ipc on x86_64-unknown-linux-gnu. The full Linux engine/service CI job is configured but has not run for this candidate.
+- Disposable Windows 10 x64 VM: clean installation, updates from both 0.3.1 and 0.3.2, modified-core/unsafe-ACL refusal, forced post-start failure rollback, repeated/stopped update, remove/reinstall and unchanged decryptable DPAPI data pass.
+- The pinned previous-release download script passes SHA-256 verification. New upgrade acceptance is configured in Windows CI; configuration is not a passing CI result.
+- Disposable VM: ordinary-user authentication passes. External HTTPS/DoH reachability passes, but the service-backed VPN fixture fails its HTTPS connection check on both candidate 0.3.3 and baseline 0.3.2. The separate TUN test reaches the IPv4 fixture, then fails the IPv6 fixture with HostUnreachable.
+- Therefore real service VPN/native tray acceptance is NOT a passing 0.3.3 result. Windows 10 is outside the initial support matrix; target Windows 11 acceptance and fresh Windows/Linux CI are required before publication. Previous 0.3.1/0.3.2 evidence below is historical, not substituted for this gate.
+- R0 remains partial: stage-specific failures, redacted diagnostic journal/export, tray Connect, signed automatic updates and power-loss recovery are pending.
 
 ## 0.3.2 verification
 
