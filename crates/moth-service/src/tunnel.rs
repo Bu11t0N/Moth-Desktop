@@ -102,13 +102,15 @@ impl Controller {
         if let Some(session) = &mut state.session {
             if !session.alive() {
                 let session = state.session.take();
-                state.phase = TunnelPhase::Failed;
-                state.error = Some(ErrorCode::TunnelFailed);
-                state.owner = None;
+                state.phase = TunnelPhase::Disconnecting;
                 drop(state);
                 if let Some(session) = session {
                     session.stop().await;
                 }
+                let mut state = self.inner.lock().await;
+                state.phase = TunnelPhase::Failed;
+                state.error = Some(ErrorCode::TunnelFailed);
+                state.owner = None;
             }
         }
     }

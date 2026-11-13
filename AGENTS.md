@@ -11,3 +11,5 @@
 - Rust formatting, relevant tests, Clippy, TypeScript build and UI checks must pass for implementation changes.
 - Keep docs/STATUS.md honest: implemented, verified and planned are distinct.
 - Do not automatically publish a signed/production release. Development source pushes and CI are expected.
+- User release preference: next release is 0.3.1, then increment patch versions (0.3.2, ...). Keep all manifests and package names consistent.
+- On requested Windows releases, extract the exact release ZIP into Desktop/Moth/<version> and update Desktop/Moth/Moth.lnk. Preserve older versions and user files. Never publish an unverified build as a working VPN.

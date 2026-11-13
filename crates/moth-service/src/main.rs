@@ -50,6 +50,40 @@ fn main() {
                 );
                 Ok(())
             }),
+        Some("--tunnel-status" | "--connect" | "--disconnect") => {
+            let command = match std::env::args().nth(1).as_deref() {
+                Some("--connect") => {
+                    use std::io::Read;
+                    let mut link = String::new();
+                    if std::io::stdin()
+                        .take(16385)
+                        .read_to_string(&mut link)
+                        .is_err()
+                        || link.len() > 16384
+                    {
+                        eprintln!("Invalid profile input");
+                        std::process::exit(2);
+                    }
+                    moth_ipc::Command::Connect { link }
+                }
+                Some("--disconnect") => moth_ipc::Command::Disconnect {},
+                _ => moth_ipc::Command::TunnelStatus {},
+            };
+            tokio::runtime::Runtime::new()
+                .expect("runtime")
+                .block_on(async {
+                    let response = moth_ipc::windows::ServiceClient::production()
+                        .call(command)
+                        .await
+                        .map_err(|e| e.to_string())?;
+                    println!(
+                        "{}",
+                        serde_json::to_string(&response.result)
+                            .map_err(|_| "Serialization failed")?
+                    );
+                    Ok(())
+                })
+        }
         _ => {
             eprintln!("Usage: moth-service --service | --console | --status");
             std::process::exit(2);

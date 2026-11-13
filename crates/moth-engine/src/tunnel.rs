@@ -27,7 +27,7 @@ impl Tunnel {
 
 /// Read-only route discovery before TUN activation. The upstream socket must
 /// stay bound to this interface: sing-box auto_detect does NOT bind Xray.
-fn upstream_interface(ip: IpAddr) -> Result<String, EngineError> {
+pub(super) fn upstream_interface(ip: IpAddr) -> Result<String, EngineError> {
     unsafe {
         let mut destination: SOCKADDR_INET = std::mem::zeroed();
         match ip {
@@ -129,6 +129,11 @@ impl EngineSet {
             }
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
+        #[cfg(test)]
+        if check_url == "http://198.18.0.123:18080/generate_204" {
+            fixture_bridge(&bridge, Ipv4Addr::new(198, 18, 0, 123), 18080).await;
+            eprintln!("Bound Xray bridge passed before TUN activation");
+        }
         let tun = self
             .spawn_config(Engine::SingBox, &tun_config, false)
             .await?;
@@ -145,10 +150,19 @@ impl EngineSet {
             if !session.alive() {
                 return Err(EngineError::Process);
             }
-            if let Ok(response) = client.get(check_url).send().await {
-                if response.status() == reqwest::StatusCode::NO_CONTENT && session.alive() {
-                    return Ok(session);
+            match client.get(check_url).send().await {
+                Ok(response)
+                    if response.status() == reqwest::StatusCode::NO_CONTENT && session.alive() =>
+                {
+                    return Ok(session)
                 }
+                #[cfg(test)]
+                Err(error) => eprintln!(
+                    "TUN verification: timeout={}, connect={}",
+                    error.is_timeout(),
+                    error.is_connect()
+                ),
+                _ => {}
             }
             if start.elapsed() > Duration::from_secs(12) {
                 return Err(EngineError::Probe);
@@ -156,6 +170,37 @@ impl EngineSet {
             tokio::time::sleep(Duration::from_millis(250)).await;
         }
     }
+}
+
+#[cfg(test)]
+pub(super) async fn fixture_bridge(bridge: &LocalBridge, ip: Ipv4Addr, port: u16) {
+    use tokio::io::AsyncReadExt;
+    timeout(Duration::from_secs(3), async {
+        let mut socket = tokio::net::TcpStream::connect((Ipv4Addr::LOCALHOST, bridge.port))
+            .await
+            .unwrap();
+        let mut header = vec![0];
+        header.extend_from_slice(bridge.credential.as_bytes());
+        header.extend_from_slice(&[0, 1]);
+        header.extend_from_slice(&port.to_be_bytes());
+        header.push(1);
+        header.extend_from_slice(&ip.octets());
+        socket.write_all(&header).await.unwrap();
+        socket
+            .write_all(
+                b"GET /generate_204 HTTP/1.1\r\nHost: fixture.invalid\r\nConnection: close\r\n\r\n",
+            )
+            .await
+            .unwrap();
+        let mut prefix = [0; 2];
+        socket.read_exact(&mut prefix).await.unwrap();
+        assert_eq!(prefix, [0, 0]);
+        let mut status = [0; 12];
+        socket.read_exact(&mut status).await.unwrap();
+        assert_eq!(&status, b"HTTP/1.1 204");
+    })
+    .await
+    .expect("Bound bridge must reach the fixture before TUN starts");
 }
 
 #[cfg(test)]

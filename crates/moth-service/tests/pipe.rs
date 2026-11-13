@@ -35,6 +35,19 @@ async fn real_console_pipe_health_version_validation_and_recovery() {
     let health = client.health().await.unwrap();
     assert!(!health.system_tunnel);
     assert!(health.engines.iter().all(|e| e.available));
+    // Console mode must NEVER start system routing, including in local tests.
+    assert!(matches!(
+        client
+            .call(Command::Connect {
+                link: "SECRET".into()
+            })
+            .await
+            .unwrap()
+            .result,
+        Reply::Failure {
+            code: ErrorCode::Unsupported
+        }
+    ));
     assert!(create_server(&development_pipe(pid), true, Some(&current_sid().unwrap())).is_err());
     let response = client
         .call(Command::Probe {

@@ -91,6 +91,24 @@ async fn real_vless_roundtrip_and_wrong_credential_failure() {
     let url = format!("http://127.0.0.1:{endpoint_port}/generate_204");
     let response = engines().probe_url(&profile, &url).await.unwrap();
     assert_eq!(response.profile_id, profile.id);
+    #[cfg(windows)]
+    {
+        let reservation = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let bridge = LocalBridge {
+            port: reservation.local_addr().unwrap().port(),
+            credential: Uuid::new_v4(),
+        };
+        drop(reservation);
+        let mut config = moth_core::xray_bridge_config(&profile, &bridge);
+        config["outbounds"][0]["streamSettings"]["sockopt"] = serde_json::json!({"interface":super::tunnel::upstream_interface("127.0.0.1".parse().unwrap()).unwrap()});
+        let mut process = engines()
+            .spawn_config(Engine::Xray, &config, false)
+            .await
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        super::tunnel::fixture_bridge(&bridge, std::net::Ipv4Addr::LOCALHOST, endpoint_port).await;
+        process.stop().await.unwrap();
+    }
     let mut bad = profile.clone();
     bad.credential = Uuid::new_v4().to_string();
     assert!(engines().probe_url(&bad, &url).await.is_err());

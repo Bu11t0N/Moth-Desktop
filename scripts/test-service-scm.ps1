@@ -33,6 +33,7 @@ try {
     $health = Get-Content -LiteralPath $userOut -Raw | ConvertFrom-Json
     if ($health.protocol -ne 2 -or -not $health.systemTunnel) { throw 'Unexpected non-administrator health response' }
     Write-Output 'Non-administrator service authentication passed.'
+    & (Join-Path $PSScriptRoot 'test-service-tunnel.ps1') -Credential $credential
 } finally {
     if ($createdUser) { Remove-LocalUser -Name $testUser }
     if ($installed) { & (Join-Path $PSScriptRoot 'Service.ps1') -Action Remove }
