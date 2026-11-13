@@ -19,6 +19,7 @@ let busy = false;
 let error = "";
 let serviceMessage = "Ещё не проверена";
 let serviceChecking = false;
+let serviceGeneration = 0;
 let serviceHealth: ServiceHealth | null = null;
 let vpn: TunnelState = {
   phase: "disconnected",
@@ -157,21 +158,26 @@ function render() {
   if (serviceButton)
     serviceButton.onclick = async () => {
       if (serviceChecking) return;
+      const generation = ++serviceGeneration;
       serviceChecking = true;
       render();
       try {
         const health = await serviceStatus();
+        if (generation !== serviceGeneration) return;
         serviceHealth = health;
         serviceMessage =
           health.protocol === 2
             ? `Связь установлена · ${health.version} · протокол ${health.protocol}`
             : `Несовместимый протокол службы · ${health.protocol}`;
       } catch (e) {
+        if (generation !== serviceGeneration) return;
         serviceHealth = null;
         serviceMessage = message(e);
       } finally {
-        serviceChecking = false;
-        render();
+        if (generation === serviceGeneration) {
+          serviceChecking = false;
+          render();
+        }
       }
     };
   const connectButton = app.querySelector<HTMLButtonElement>(".connect");
@@ -295,7 +301,14 @@ function updateVpnMessage() {
 }
 async function refreshVpn() {
   if (!native) return;
-  const before = JSON.stringify([vpn, serviceAvailable, vpnMessage]);
+  const before = JSON.stringify([
+    vpn,
+    serviceAvailable,
+    vpnMessage,
+    serviceHealth,
+    serviceMessage,
+    serviceChecking,
+  ]);
   const revision = vpnRevision;
   try {
     const next = await tunnel("tunnel_status");
@@ -314,16 +327,29 @@ async function refreshVpn() {
       );
     if (revision !== vpnRevision) return;
     vpn = next;
+    if (!serviceAvailable && !serviceHealth)
+      serviceMessage = "Версии службы ещё не проверены";
     serviceAvailable = true;
     updateVpnMessage();
   } catch (e) {
     if (revision !== vpnRevision) return;
     serviceAvailable = false;
+    ++serviceGeneration;
+    serviceChecking = false;
     serviceHealth = null;
+    serviceMessage = message(e);
     vpnMessage = message(e) + ". Запусти Install-Service.cmd из папки Moth.";
   }
   if (
-    before !== JSON.stringify([vpn, serviceAvailable, vpnMessage]) ||
+    before !==
+      JSON.stringify([
+        vpn,
+        serviceAvailable,
+        vpnMessage,
+        serviceHealth,
+        serviceMessage,
+        serviceChecking,
+      ]) ||
     vpnRenderPending
   ) {
     vpnRenderPending = !!app.querySelector("dialog[open]");

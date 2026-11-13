@@ -434,3 +434,125 @@ test("diagnostics support IPC 2 service 0.3.1 and clear stale health after failu
   await expect(page.getByText("Ядро службы: sing-box")).toHaveCount(0);
   await expect(page.getByText("Не подтверждён", { exact: true })).toBeVisible();
 });
+
+for (const delayedHealth of [false, true]) {
+  test(`service loss clears positive diagnostics${delayedHealth ? " and rejects late health" : ""}`, async ({
+    page,
+  }) => {
+    await page.addInitScript((delayed: boolean) => {
+      const w = window as unknown as {
+        isTauri: boolean;
+        __TAURI_INTERNALS__: unknown;
+        loseService: () => void;
+        releaseOldHealth: () => void;
+        pendingHealth: boolean;
+        oldHealthReturned: boolean;
+      };
+      w.isTauri = true;
+      w.pendingHealth = false;
+      w.oldHealthReturned = false;
+      let unavailable = false;
+      let checks = 0;
+      let release: (() => void) | undefined;
+      w.loseService = () => {
+        unavailable = true;
+      };
+      w.releaseOldHealth = () => {
+        release?.();
+      };
+      w.__TAURI_INTERNALS__ = {
+        invoke: async (cmd: string) => {
+          if (cmd === "tunnel_status") {
+            if (unavailable) throw new Error("Служба недоступна");
+            return { phase: "disconnected", ownedByCaller: false, error: null };
+          }
+          if (cmd === "service_status") {
+            if (++checks > 1 && delayed) {
+              w.pendingHealth = true;
+              await new Promise<void>((resolve) => {
+                release = resolve;
+              });
+              w.oldHealthReturned = true;
+            }
+            return {
+              version: "0.3.1",
+              protocol: 2,
+              systemTunnel: true,
+              engines: [
+                { name: "xray", version: "26.10.21", available: true },
+                { name: "sing-box", version: "1.12.25", available: true },
+              ],
+            };
+          }
+          return {
+            profiles: [],
+            selected: null,
+            version: "0.3.3",
+            engines: [],
+            capabilities: {
+              platform: "windows",
+              secureStorage: true,
+              systemTunnel: true,
+              killSwitch: false,
+            },
+          };
+        },
+      };
+    }, delayedHealth);
+    await page.goto("/");
+    await page.getByRole("button", { name: "Настройки", exact: true }).click();
+    const refresh = page.getByRole("button", {
+      name: "Проверить связь со службой",
+      exact: true,
+    });
+    await refresh.click();
+    await expect(page.getByRole("status")).toContainText(
+      "Связь установлена · 0.3.1",
+    );
+    await expect(page.getByText("Ядро службы: sing-box")).toBeVisible();
+    if (delayedHealth) {
+      await refresh.click();
+      await page.waitForFunction(
+        () => (window as unknown as { pendingHealth: boolean }).pendingHealth,
+      );
+    }
+    await page.evaluate(() =>
+      (window as unknown as { loseService: () => void }).loseService(),
+    );
+    await expect(page.getByRole("status")).toHaveText("Служба недоступна");
+    await expect(
+      page.getByText("Связь установлена", { exact: false }),
+    ).toHaveCount(0);
+    await expect(page.getByText("Ядро службы:", { exact: false })).toHaveCount(
+      0,
+    );
+    await expect(page.getByText("Совместим · IPC 2")).toHaveCount(0);
+    await expect(
+      page.getByText("Доступен через службу", { exact: true }),
+    ).toHaveCount(0);
+    if (delayedHealth) {
+      await page.evaluate(() =>
+        (
+          window as unknown as { releaseOldHealth: () => void }
+        ).releaseOldHealth(),
+      );
+      await page.waitForFunction(
+        () =>
+          (window as unknown as { oldHealthReturned: boolean })
+            .oldHealthReturned,
+      );
+      await expect(page.getByRole("status")).toHaveText("Служба недоступна");
+      await expect(
+        page.getByText("Связь установлена", { exact: false }),
+      ).toHaveCount(0);
+      await expect(
+        page.getByText("Ядро службы:", { exact: false }),
+      ).toHaveCount(0);
+      await expect(page.getByText("Совместим · IPC 2")).toHaveCount(0);
+      await expect(
+        page.getByText("Доступен через службу", { exact: true }),
+      ).toHaveCount(0);
+      await expect(refresh).toBeEnabled();
+    }
+  });
+}

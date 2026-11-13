@@ -21,7 +21,7 @@ Publication remains gated on target-platform acceptance; the checks below distin
 
 - Plain screen/action/state names; connection headings reflect service-owned phases.
 - GUI/service/core versions, IPC v2 compatibility and separate build/runtime capabilities.
-- Service health rechecks pinned core hashes; unavailable/stale service diagnostics are cleared by the UI.
+- Service health rechecks pinned core hashes; service loss clears positive diagnostics and invalidates pending health responses by generation.
 - Existing service 0.3.1 remains compatible. No new IPC commands or arbitrary runtime engine/config paths.
 - Manual 0.3.1/0.3.2/0.3.3 service upgrades validate SCM configuration and existing ACLs, stage pinned cores before stop, verify the candidate and restore the previous files/state on startup failure.
 - DPAPI profiles are untouched by maintenance. Remove/reinstall needs no manual Program Files cleanup; previous/failed files are preserved for review.
@@ -30,7 +30,7 @@ Publication remains gated on target-platform acceptance; the checks below distin
 ## 0.3.3 verification and publication gate
 
 - Rust workspace unit/integration tests, fmt and Clippy with warnings denied pass. System-network tests are excluded from host execution.
-- TypeScript/Vite and eight Playwright scenarios pass, including IPC v2 service 0.3.1 and clearing stale diagnostics.
+- TypeScript/Vite and ten Playwright scenarios pass, including IPC v2 service 0.3.1 and clearing stale diagnostics.
 - Cross-compilation checks pass for moth-core, moth-platform and moth-ipc on x86_64-unknown-linux-gnu. The full Linux engine/service CI job is configured but has not run for this candidate.
 - Disposable Windows 10 x64 VM: clean installation, updates from both 0.3.1 and 0.3.2, modified-core/unsafe-ACL refusal, forced post-start failure rollback, repeated/stopped update, remove/reinstall and unchanged decryptable DPAPI data pass.
 - The pinned previous-release download script passes SHA-256 verification. New upgrade acceptance is configured in Windows CI; configuration is not a passing CI result.
