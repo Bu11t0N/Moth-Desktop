@@ -38,7 +38,7 @@ pub async fn run(
     let health = Arc::new(Health {
         version: env!("CARGO_PKG_VERSION").into(),
         protocol: PROTOCOL_VERSION,
-        system_tunnel: false,
+        system_tunnel: !development,
         engines: status
             .into_iter()
             .map(|e| EngineInfo {
@@ -67,23 +67,27 @@ pub async fn run(
     }
     let capacity = Arc::new(Semaphore::new(8));
     let gate = Arc::new(Mutex::new(()));
+    let tunnel = Arc::new(crate::tunnel::Controller::default());
+    let mut monitor = tokio::time::interval(Duration::from_millis(500));
     let mut tasks = JoinSet::new();
     loop {
         tokio::select! {
+            _=monitor.tick()=>tunnel.monitor().await,
             _=shutdown.changed()=>{if *shutdown.borrow(){break;}},
             accepted=listener.connect()=>{
                 accepted.map_err(|_|IpcError::Unavailable)?;
                 let connected=listener;
                 listener=moth_ipc::windows::create_server(&name,false,sid.as_deref())?;
                 let Ok(permit)=capacity.clone().try_acquire_owned() else{drop(connected);continue;};
-                let engines=engines.clone();let health=health.clone();let gate=gate.clone();let sid=sid.clone();
-                tasks.spawn(async move{let _permit=permit;let _=handle(connected,engines,health,gate,sid).await;});
+                let engines=engines.clone();let health=health.clone();let gate=gate.clone();let sid=sid.clone();let tunnel=tunnel.clone();
+                tasks.spawn(async move{let _permit=permit;let _=handle(connected,engines,health,gate,sid,tunnel,development).await;});
             },
             Some(_)=tasks.join_next(),if !tasks.is_empty()=>{},
         }
     }
     tasks.abort_all();
     while tasks.join_next().await.is_some() {}
+    tunnel.shutdown().await;
     Ok(())
 }
 
@@ -93,11 +97,13 @@ async fn handle(
     health: Arc<Health>,
     gate: Arc<Mutex<()>>,
     sid: Option<String>,
+    tunnel: Arc<crate::tunnel::Controller>,
+    development: bool,
 ) -> Result<(), IpcError> {
     let request: Request = timeout(Duration::from_secs(2), moth_ipc::read_frame(&mut pipe))
         .await
         .map_err(|_| IpcError::Timeout)??;
-    moth_ipc::windows::authorize_client(&pipe, sid.as_deref())?;
+    let caller = moth_ipc::windows::authorize_client(&pipe, sid.as_deref())?;
     let result = if request.version != PROTOCOL_VERSION {
         Reply::Failure {
             code: ErrorCode::VersionMismatch,
@@ -107,7 +113,7 @@ async fn handle(
             Command::Status {} => Reply::Status(Health {
                 version: health.version.clone(),
                 protocol: health.protocol,
-                system_tunnel: false,
+                system_tunnel: health.system_tunnel,
                 engines: health
                     .engines
                     .iter()
@@ -118,6 +124,19 @@ async fn handle(
                     })
                     .collect(),
             }),
+            Command::TunnelStatus {} => tunnel.status(&caller).await,
+            Command::Disconnect {} if !development => tunnel.disconnect(&caller).await,
+            Command::Connect { link } if !development => match moth_core::import_links(link) {
+                Ok(mut profiles) if profiles.len() == 1 => {
+                    tunnel.connect(&caller, &profiles.remove(0), &engines).await
+                }
+                _ => Reply::Failure {
+                    code: ErrorCode::InvalidProfile,
+                },
+            },
+            Command::Connect { .. } | Command::Disconnect {} => Reply::Failure {
+                code: ErrorCode::Unsupported,
+            },
             Command::Probe { link } => match gate.try_lock() {
                 Err(_) => Reply::Failure {
                     code: ErrorCode::Busy,

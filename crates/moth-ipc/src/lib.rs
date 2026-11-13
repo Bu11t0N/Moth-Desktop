@@ -6,7 +6,7 @@ use zeroize::Zeroizing;
 
 #[cfg(windows)]
 pub mod windows;
-pub const PROTOCOL_VERSION: u16 = 1;
+pub const PROTOCOL_VERSION: u16 = 2;
 pub const MAX_FRAME: usize = 32 * 1024;
 pub const SERVICE_NAME: &str = "MothDesktopService";
 pub const PIPE_NAME: &str = r"\\.\pipe\Moth.Desktop.Service.v1";
@@ -24,10 +24,13 @@ pub struct Request {
 pub enum Command {
     Status {},
     Probe { link: String },
+    Connect { link: String },
+    Disconnect {},
+    TunnelStatus {},
 }
 impl Drop for Command {
     fn drop(&mut self) {
-        if let Self::Probe { link } = self {
+        if let Self::Probe { link } | Self::Connect { link } = self {
             use zeroize::Zeroize;
             link.zeroize();
         }
@@ -55,7 +58,25 @@ pub struct Response {
 pub enum Reply {
     Status(Health),
     Probe { latency_ms: u64 },
+    Tunnel(TunnelState),
     Failure { code: ErrorCode },
+}
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum TunnelPhase {
+    #[default]
+    Disconnected,
+    Connecting,
+    Connected,
+    Disconnecting,
+    Failed,
+}
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TunnelState {
+    pub phase: TunnelPhase,
+    pub owned_by_caller: bool,
+    pub error: Option<ErrorCode>,
 }
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -81,6 +102,9 @@ pub enum ErrorCode {
     Busy,
     EngineUnavailable,
     ProbeFailed,
+    TunnelFailed,
+    NotOwner,
+    Unsupported,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -177,7 +201,7 @@ mod tests {
     fn rejects_wrong_correlation_and_version() {
         let request = Request::new(Command::Status {});
         let mut response = Response {
-            version: 1,
+            version: PROTOCOL_VERSION,
             id: Uuid::new_v4(),
             result: Reply::Failure {
                 code: ErrorCode::Busy,
@@ -188,7 +212,7 @@ mod tests {
             Err(IpcError::Protocol)
         ));
         response.id = request.id;
-        response.version = 2;
+        response.version = PROTOCOL_VERSION + 1;
         assert!(matches!(
             validate_response(&request, &response),
             Err(IpcError::VersionMismatch)

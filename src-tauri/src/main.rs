@@ -144,6 +144,58 @@ async fn service_status() -> Result<moth_ipc::Health, String> {
         Err("Системная служба этой платформы ещё не реализована".into())
     }
 }
+async fn tunnel_call(command: moth_ipc::Command) -> Result<moth_ipc::TunnelState, String> {
+    #[cfg(windows)]
+    {
+        match moth_ipc::windows::ServiceClient::production()
+            .call(command)
+            .await
+            .map_err(|e| e.to_string())?
+            .result
+        {
+            moth_ipc::Reply::Tunnel(state) => Ok(state),
+            moth_ipc::Reply::Failure { code } => Err(match code {
+                moth_ipc::ErrorCode::NotOwner => {
+                    "Подключением управляет другая учётная запись Windows"
+                }
+                moth_ipc::ErrorCode::Busy => "Служба уже выполняет действие; дождитесь завершения",
+                moth_ipc::ErrorCode::InvalidProfile => "Служба отклонила параметры сервера",
+                _ => "Не удалось выполнить действие с VPN",
+            }
+            .into()),
+            _ => Err("Некорректный ответ службы".into()),
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        drop(command);
+        Err("Системный туннель Linux ещё не реализован".into())
+    }
+}
+#[tauri::command]
+async fn tunnel_status() -> Result<moth_ipc::TunnelState, String> {
+    tunnel_call(moth_ipc::Command::TunnelStatus {}).await
+}
+#[tauri::command]
+async fn disconnect_vpn() -> Result<moth_ipc::TunnelState, String> {
+    tunnel_call(moth_ipc::Command::Disconnect {}).await
+}
+#[tauri::command]
+async fn connect_vpn(
+    id: Uuid,
+    state: tauri::State<'_, AppState>,
+) -> Result<moth_ipc::TunnelState, String> {
+    let link = {
+        let library = state.library.lock().map_err(|_| "Хранилище недоступно")?;
+        let profile = library
+            .profiles
+            .iter()
+            .find(|p| p.id == id)
+            .ok_or("Сервер не найден")?;
+        moth_core::share_link(profile).map_err(str::to_owned)?
+    };
+    tunnel_call(moth_ipc::Command::Connect { link }).await
+}
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
@@ -178,7 +230,10 @@ fn main() {
             select_server,
             remove_server,
             probe_server,
-            service_status
+            service_status,
+            tunnel_status,
+            connect_vpn,
+            disconnect_vpn
         ])
         .run(tauri::generate_context!())
         .expect("Не удалось запустить Moth Desktop");

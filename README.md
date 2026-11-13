@@ -3,7 +3,7 @@
 Windows-first desktop companion to [Moth for Android](https://github.com/Bu11t0N/Moth).
 Rust domain/platform layers and a Tauri 2 + TypeScript interface, designed for a later Linux port.
 
-**Development preview. This version does not establish a VPN and does not protect traffic.**
+**0.3.1 development release: Windows system TUN connection. Requires the installed service. Kill switch and automatic network recovery are not implemented.**
 
 ## Implemented
 
@@ -14,10 +14,11 @@ Rust domain/platform layers and a Tauri 2 + TypeScript interface, designed for a
 - Desktop interface: Home, Servers, Settings, import and delete dialogs.
 - Pinned Xray 26.10.21 and sing-box 1.12.25, archive/executable SHA-256 verification.
 - Real per-server HTTPS probe through a short-lived authenticated local Xray proxy.
-- Engine-validated configuration matrix and sing-box TUN plan (not executed as a VPN).
+- Engine-validated configuration matrix and an executable sing-box TUN / Xray bridge.
 - Windows Job Object cleanup, bounded process lifetimes, config through stdin, suppressed core logs.
 - Windows Service + authenticated/versioned named pipe, optional service-backed probes.
-- Separate service health view; explicit manual installation, no automatic privilege elevation.
+- Connect/disconnect via authenticated service, per-account connection ownership, engine monitoring.
+- Explicit Install-Service.cmd bootstrap with Windows UAC; the GUI runs as an ordinary user.
 
 Unsupported URI options are rejected rather than silently discarded. HTTP subscription fetching,
 Clash/sing-box/Xray JSON imports, Android backups and other protocols are planned, not implemented.

@@ -1,34 +1,29 @@
-# Status — 2026-11-12
+# Status — 2026-11-13
 
-Current milestone: M1b control plane, preview 0.3.0. No system VPN yet.
+Version 0.3.1 is in release validation.
 
 ## Implemented
 
-- M0/M1a: profiles, protected Windows storage, Tauri UI, pinned cores, real HTTPS probes, native config checks and isolated loopback VLESS tests.
-- moth-ipc: bounded/versioned frames, strict request schemas, response correlation, authenticated Windows named pipe and explicit development-only transport.
-- moth-service: real SCM dispatcher, stop/shutdown lifecycle, protected installation gate, health/probe commands and bounded concurrency.
-- Production client verifies SCM PID and LocalSystem before sending credentials. Server checks the actual caller token, integrity, AppContainer and group membership.
-- Explicit manual install/remove script with fixed Program Files layout and ACLs.
-- GUI service health is separate from VPN status. Probes use the installed service when available; preview local probes remain when it is absent. Auth errors never fall back.
+- Previous profile import, DPAPI, pinned engines, HTTPS probes and authenticated SCM service.
+- System TUN using sing-box with embedded Wintun; IPv4/IPv6 routes and DNS on the private adapter.
+- Xray upstream interface binding, server resolution before routing changes, authenticated local bridge.
+- Connection success requires HTTPS sourced from the TUN address. No direct/proxy fallback.
+- IPC v2 typed connect/disconnect/status, authenticated SID ownership, startup cancellation and bounded startup.
+- Service owns the connection independently of the GUI and monitors both engines every 500 ms.
+- Connect/disconnect UI polls service state; service loss removes connected indication.
+- Explicit service installation bootstrap, version 0.3.1 package and Desktop delivery planned.
 
 ## Verification
 
-- Prior 0.2.0 implementation 9a5e5fe: Windows/Linux CI passed: https://github.com/Bu11t0N/Moth-Desktop/actions/runs/43228887516
-- Current local Windows: 19 Rust tests passed (10 core, 3 engine, 3 protocol, 2 real pipe integration, 1 DPAPI); Clippy with warnings denied passed.
-- Five Playwright scenarios and TypeScript/Vite build passed.
-- Console process/pipe integration covers health, first-instance protection, wrong version, oversized request, recovery, invalid profile and rejection of a fake peer before credentials are written. PowerShell scripts parse successfully.
-- Implementation bd45fc2: Windows and Linux CI both passed, including real SCM install/start/stop/restart/removal and authenticated access from a separate non-administrator account: https://github.com/Bu11t0N/Moth-Desktop/actions/runs/43240293250
-- No service was installed and no network settings changed on the developer host.
-- Native WebView2 live-window/DPI/accessibility checks remain pending; previous automation app-launch approval timed out. Browser UI tests are not native visual acceptance.
+Local portable/configuration/IPC/UI checks and disposable Windows TUN/SCM CI are running.
+Do not interpret the presence of implementation as completed network acceptance.
+No host network settings were changed for development tests.
 
-## Next
+## Limitations
 
-1. Interface discovery and upstream socket/route exclusion, then actual TUN/DNS in a VM.
-2. Per-user connection ownership, lifecycle/recovery policy and OS kill switch.
-3. Native GUI acceptance as a standard user, multiple-session and low-integrity/AppContainer tests; security review.
-4. HTTPS subscriptions, Android backups, tray and signed installer/update policy.
-5. Linux daemon/transport/secret storage. Protocol/domain/engine logic remains portable.
-
-## Not implemented / not claimed
-
-System-wide VPN connection, working TUN, kill switch, DNS/IPv6 leak protection, persistent tunnel/reconnection, production installer/upgrades, automatic updates, Linux daemon/storage, full protocol parity or native GUI acceptance. A RUNNING service or a successful HTTPS probe does not protect system traffic.
+No persistent kill switch: engine/service failure tears down the tunnel and normal networking returns.
+No automatic reconnect after sleep/network switch; disconnect and connect again.
+DNS on physical adapters is not rewritten. LAN/more-specific existing routes can bypass TUN; applications with explicitly bound adapters are outside the current guarantee.
+No claim of comprehensive IPv6/DNS leak protection or compatibility with concurrent VPNs.
+Linux retains compiling common crates; daemon, storage and TUN integration remain pending.
+Native GUI DPI/accessibility acceptance and production signing remain pending.

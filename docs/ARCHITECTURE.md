@@ -66,3 +66,16 @@ Rust, never through the webview.
 - https://sing-box.sagernet.org/configuration/route/rule/
 - https://learn.microsoft.com/en-us/windows/win32/fwp/about-windows-filtering-platform
 - Android source reference: https://github.com/Bu11t0N/Moth/tree/36dfa07da6b813493863ac48eadf4a0e67798ad1
+
+## ADR-007: Windows TUN in 0.3.1
+
+The service owns sing-box TUN and a credential-authenticated loopback VLESS bridge to Xray.
+Before activation it resolves the server and uses GetBestInterfaceEx / ConvertInterfaceLuidToAlias.
+Xray sockopt.interface binds sockets to that upstream interface (IP_UNICAST_IF / IPV6_UNICAST_IF).
+The separate Xray process is not protected by sing-box auto_detect_interface alone.
+DNS/routes belong only to the private Wintun adapter; physical adapter DNS/routes are never overwritten.
+Windows job teardown removes the adapter and dynamic WFP session; this is fail-open, not a kill switch.
+Protocol v2 adds SID-owned connection lifecycle; the stable pipe endpoint remains unchanged.
+Normal console development mode refuses system connect/disconnect. Real TUN acceptance requires a disposable CI Windows VM.
+
+Sources reviewed at pinned versions: [Xray Windows socket binding](https://github.com/XTLS/Xray-core/blob/1b1647cd9ddf0abc34b981d4611fc03bcac1ca74/transport/internet/sockopt_windows.go), [sing-tun adapter lifecycle](https://github.com/SagerNet/sing-tun/blob/v0.7.13/tun_windows.go), [embedded Wintun loader](https://github.com/SagerNet/sing-tun/blob/v0.7.13/internal/wintun/dll_windows.go).

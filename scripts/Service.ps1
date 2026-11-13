@@ -1,4 +1,4 @@
-#requires -Version 7.0
+#requires -Version 5.1
 param(
     [ValidateSet('Install','Remove','Status')][string]$Action = 'Status',
     [string]$PackageDirectory = ''
@@ -55,7 +55,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Could not set installation ownership' }
 $serviceExe = Join-Path $installRoot 'moth-service.exe'
 & $serviceExe --check-install
 if ($LASTEXITCODE -ne 0) { throw 'Service rejected the installation security policy; no service was registered.' }
-New-Service -Name $serviceName -DisplayName 'Moth Desktop Service (development)' -BinaryPathName ('"' + $serviceExe + '" --service') -StartupType Manual -Description 'Moth local server diagnostics. System VPN is not implemented in this preview.' | Out-Null
+New-Service -Name $serviceName -DisplayName 'Moth Desktop Service' -BinaryPathName ('"' + $serviceExe + '" --service') -StartupType Automatic -Description 'Moth VPN tunnel and authenticated local control.' | Out-Null
 try {
     Start-Service -Name $serviceName
     (Get-Service -Name $serviceName).WaitForStatus('Running',[TimeSpan]::FromSeconds(20))

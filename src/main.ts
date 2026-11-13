@@ -5,6 +5,8 @@ import {
   native,
   probe,
   serviceStatus,
+  tunnel,
+  type TunnelState,
   type Snapshot,
 } from "./api";
 
@@ -15,6 +17,16 @@ let busy = false;
 let error = "";
 let serviceMessage = "Ещё не проверена";
 let serviceChecking = false;
+let vpn: TunnelState = {
+  phase: "disconnected",
+  ownedByCaller: false,
+  error: null,
+};
+let vpnBusy = false;
+let serviceAvailable = false;
+let vpnMessage = native
+  ? "Проверяем службу Windows…"
+  : "Открой настольное приложение Windows";
 const probeResults = new Map<string, string>();
 let probingId: string | null = null;
 
@@ -43,6 +55,18 @@ export const escapeHtml = (text: string) =>
 
 function render() {
   const selected = state.profiles.find((p) => p.id === state.selected);
+  const connected = vpn.phase === "connected" && serviceAvailable;
+  const active =
+    connected || vpn.phase === "connecting" || vpn.phase === "disconnecting";
+  const status = !serviceAvailable
+    ? "Служба недоступна"
+    : {
+        disconnected: "Не подключено",
+        connecting: "Подключаем…",
+        connected: "Подключено",
+        disconnecting: "Отключаем…",
+        failed: "Соединение прервано",
+      }[vpn.phase];
   app.innerHTML = `<div class="shell">
     <aside class="sidebar"><a class="brand" href="#" aria-label="Мотылёк, главная"><span class="brand-mark">${moth}</span><span>мотылёк<small>MOTH DESKTOP</small></span></a>
       <nav aria-label="Разделы">${(
@@ -57,9 +81,9 @@ function render() {
             `<button class="nav-item ${page === key ? "active" : ""}" data-page="${key}" ${page === key ? 'aria-current="page"' : ""}>${icon(key)}${title}${key === "servers" ? `<span class="count">${state.profiles.length}</span>` : ""}</button>`,
         )
         .join("")}</nav>
-      <div class="sidebar-bottom"><span class="version-dot"></span> Версия для разработки<small>0.3.0 · Windows first</small></div>
+      <div class="sidebar-bottom"><span class="version-dot"></span> Версия для разработки<small>0.3.1 · Windows first</small></div>
     </aside>
-    <main><header><div class="breadcrumb">ЛИЧНОЕ ПРОСТРАНСТВО <span>/</span> ${page === "home" ? "ОБЗОР" : page === "servers" ? "СЕРВЕРЫ" : "НАСТРОЙКИ"}</div><span class="build-badge">PREVIEW 03</span></header>
+    <main><header><div class="breadcrumb">ЛИЧНОЕ ПРОСТРАНСТВО <span>/</span> ${page === "home" ? "ОБЗОР" : page === "servers" ? "СЕРВЕРЫ" : "НАСТРОЙКИ"}</div><span class="build-badge">0.3.1</span></header>
     ${!native ? '<div class="preview-note">Просмотр интерфейса в браузере. Профили и подключение доступны только в настольном приложении.</div>' : ""}
     ${error ? `<div class="error" role="alert">${escapeHtml(error)}</div>` : ""}
     <section class="content">
@@ -67,14 +91,14 @@ function render() {
       page === "home"
         ? `
       <div class="page-heading"><div><p class="eyebrow">ТИШЕ. ПРОЩЕ. БЛИЖЕ.</p><h1>Твоя сторона сети.</h1><p class="muted">Знакомый Мотылёк. Теперь на большом экране.</p></div><button class="button subtle" data-import>${icon("plus")} Добавить сервер</button></div>
-      <div class="overview"><article class="connection-card"><div class="card-top"><span class="status"><i></i> Не подключено</span><span class="muted small">СИСТЕМНЫЙ ТУННЕЛЬ</span></div>
+      <div class="overview"><article class="connection-card"><div class="card-top"><span class="status"><i></i> ${status}</span><span class="muted small">СИСТЕМНЫЙ ТУННЕЛЬ</span></div>
         <div class="moth-orbit"><div class="orbit-inner">${moth}</div></div>
-        <h2>Сначала — надёжная основа</h2><p class="card-description">Импортируй серверы и собери свой список.<br>Подключение VPN появится на следующем этапе.</p>
-        <button class="connect" disabled>Подключение в разработке</button><p class="protection-note">${icon("shield")} VPN сейчас не защищает трафик</p>
+        <h2>${connected ? "Ты в сети через Мотылёк" : "Твой маршрут начинается здесь"}</h2><p class="card-description" role="status">${escapeHtml(vpnMessage)}</p>
+        <button class="connect" ${!native || !serviceAvailable || vpnBusy || (active && !vpn.ownedByCaller) || (!active && !selected) ? "disabled" : ""}>${vpnBusy ? "Выполняем…" : active ? "Отключить" : "Подключить"}</button><p class="protection-note">${icon("shield")} ${connected ? "Туннель проверен · kill switch пока недоступен" : "VPN сейчас не защищает трафик"}</p>
       </article><div class="right-column"><article class="selected-card"><div class="card-top"><h3>Выбранный сервер</h3><span class="tiny-label">01</span></div>
         ${selected ? `<div class="server-emblem">${icon("servers")}</div><h2 class="selected-name">${escapeHtml(selected.name)}</h2><p class="endpoint">${escapeHtml(selected.host)}:${selected.port}</p><div class="tags"><span>${escapeHtml(selected.protocol)}</span><span>${escapeHtml(selected.security)}</span></div>` : `<div class="server-emblem">${icon("servers")}</div><h2>Пока пусто</h2><p class="muted">Добавь ссылку от своего провайдера<br>или владельца сервера.</p>`}
         <button class="text-link" data-page="servers">${selected ? "Все серверы" : "Открыть список серверов"} ${icon("arrow")}</button></article>
-        <article class="progress-card"><span class="eyebrow">ПЕРВЫЙ ПОЛЁТ</span><h3>Растём постепенно</h3><p>Знакомые серверы.<br>Новые возможности на компьютере.</p><div class="milestones"><span class="done"></span><span></span><span></span><span></span></div><small>01 / 04 · Профили и интерфейс</small></article></div></div>
+        <article class="progress-card"><span class="eyebrow">ПОДКЛЮЧЕНИЕ WINDOWS</span><h3>Один раз установи службу</h3><p>Запусти Install-Service.cmd из папки приложения и подтверди запрос Windows. Затем подключайся обычной кнопкой.</p><small>Закрытие окна сохраняет подключение. Для смены сервера сначала отключись.</small></article></div></div>
       <div class="bottom-note">${icon("shield")}<p><strong>Твои данные остаются у тебя</strong><span>В Windows профили защищены средствами учётной записи. Без аналитики и облачной синхронизации.</span></p></div>
     `
         : page === "servers"
@@ -83,8 +107,8 @@ function render() {
       ${state.profiles.length ? `<div class="server-list">${state.profiles.map((p) => `<article class="server-row ${p.id === state.selected ? "chosen" : ""}"><div class="server-symbol">${icon("servers")}</div><div class="server-info"><h3>${escapeHtml(p.name)}</h3><p>${escapeHtml(p.host)}:${p.port}</p><div class="tags"><span>${escapeHtml(p.protocol)}</span><span>${escapeHtml(p.transport)}</span><span>${escapeHtml(p.security)}</span></div></div><div class="server-actions"><button class="button subtle" data-probe="${p.id}" ${busy || probingId ? "disabled" : ""}>${probingId === p.id ? "Проверяем…" : "Проверить сервер"}</button><span class="probe-result" role="status">${escapeHtml(probeResults.get(p.id) || "")}</span><button class="button subtle" data-select="${p.id}" ${busy ? "disabled" : ""}>${p.id === state.selected ? "Выбран" : "Выбрать"}</button><button class="delete" data-delete="${p.id}" ${busy ? "disabled" : ""}>Удалить</button></div></article>`).join("")}</div>` : `<div class="empty-state"><div class="empty-art">${moth}</div><h2>Здесь начнётся твой маршрут</h2><p>Вставь ссылку VLESS или Trojan.<br>Секреты сохраняются только в настольном приложении.</p><button class="button" data-import>${icon("plus")} Добавить первый сервер</button></div>`}
     `
           : `<div class="page-heading"><div><p class="eyebrow">ПОД КРЫЛОМ</p><h1>Настройки</h1><p class="muted">Состояние этой сборки и доступные возможности</p></div></div>
-      <article class="settings-card"><h2>Приложение</h2><div class="setting"><span>Версия</span><strong>${escapeHtml(state.version)} · Preview</strong></div><div class="setting"><span>Платформа</span><strong>${escapeHtml(state.capabilities.platform)}</strong></div><div class="setting"><span>Защищённое хранилище</span><strong>${state.capabilities.secureStorage ? "Windows DPAPI" : "Недоступно в этом режиме"}</strong></div><div class="setting"><span>Системный VPN</span><strong>В разработке</strong></div><div class="setting"><span>Kill switch</span><strong>В разработке</strong></div></article>
-      <article class="settings-card"><h2>Служба Windows</h2><p class="muted" role="status">${escapeHtml(serviceMessage)}</p><button class="button subtle service-refresh" ${serviceChecking ? "disabled" : ""}>${serviceChecking ? "Проверяем…" : "Проверить связь со службой"}</button><p class="muted">В preview проверка серверов работает и без установленной службы. Системный VPN пока недоступен.</p></article><article class="settings-card"><h2>Сетевые компоненты</h2>${(state.engines || []).map((e) => `<div class="setting"><span>${escapeHtml(e.name)} ${escapeHtml(e.version)}</span><strong>${e.available ? "Готов к проверке серверов" : escapeHtml(e.message || "Недоступен")}</strong></div>`).join("")}<p class="muted">HTTPS-проверка проходит через выбранный сервер. Её результат — не ICMP ping и не признак включённого системного VPN.</p></article><article class="settings-card"><h2>Что дальше</h2><p class="muted">Служба Windows, сетевые ядра, системный туннель и проверка DNS. Затем — восстановление после сбоев, трей и установщик. Настройки подключения появятся вместе с работающими возможностями.</p></article>`
+      <article class="settings-card"><h2>Приложение</h2><div class="setting"><span>Версия</span><strong>${escapeHtml(state.version)} · Preview</strong></div><div class="setting"><span>Платформа</span><strong>${escapeHtml(state.capabilities.platform)}</strong></div><div class="setting"><span>Защищённое хранилище</span><strong>${state.capabilities.secureStorage ? "Windows DPAPI" : "Недоступно в этом режиме"}</strong></div><div class="setting"><span>Системный VPN</span><strong>Туннель Windows</strong></div><div class="setting"><span>Kill switch</span><strong>В разработке</strong></div></article>
+      <article class="settings-card"><h2>Служба Windows</h2><p class="muted" role="status">${escapeHtml(serviceMessage)}</p><button class="button subtle service-refresh" ${serviceChecking ? "disabled" : ""}>${serviceChecking ? "Проверяем…" : "Проверить связь со службой"}</button><p class="muted">Для VPN нужна установленная служба версии 0.3.1. Запусти Install-Service.cmd рядом с приложением.</p></article><article class="settings-card"><h2>Сетевые компоненты</h2>${(state.engines || []).map((e) => `<div class="setting"><span>${escapeHtml(e.name)} ${escapeHtml(e.version)}</span><strong>${e.available ? "Готов к проверке серверов" : escapeHtml(e.message || "Недоступен")}</strong></div>`).join("")}<p class="muted">HTTPS-проверка проходит через выбранный сервер. Её результат — не ICMP ping и не признак включённого системного VPN.</p></article><article class="settings-card"><h2>Что дальше</h2><p class="muted">После смены сети подключись заново. Kill switch и автоматическое восстановление после сна ещё разрабатываются. При сбое ядра туннель отключается, Windows возвращается к обычной сети.</p></article>`
     }
     </section><footer><span>MOTH · OPEN SOURCE</span><span>Спокойное соединение с миром.</span></footer></main></div>
     <dialog id="import-dialog"><form id="import-form"><div class="dialog-heading"><div><p class="eyebrow">НОВЫЙ МАРШРУТ</p><h2>Добавить серверы</h2></div><button type="button" class="close" aria-label="Закрыть">×</button></div><label for="server-links">Ссылки серверов</label><textarea id="server-links" required rows="6" autocomplete="off" spellcheck="false" placeholder="vless://… или trojan://…"></textarea><p class="dialog-help">По одной ссылке на строку или Base64-список. Загрузка HTTPS-подписок будет добавлена позже.</p><p id="import-error" class="dialog-error" role="alert"></p><div class="dialog-actions"><button type="button" class="button subtle close">Отмена</button><button class="button" type="submit">Импортировать</button></div></form></dialog>
@@ -135,6 +159,26 @@ function render() {
         serviceMessage = message(e);
       } finally {
         serviceChecking = false;
+        render();
+      }
+    };
+  const connectButton = app.querySelector<HTMLButtonElement>(".connect");
+  if (connectButton)
+    connectButton.onclick = async () => {
+      if (vpnBusy) return;
+      vpnBusy = true;
+      error = "";
+      render();
+      try {
+        vpn = await tunnel(
+          active ? "disconnect_vpn" : "connect_vpn",
+          active ? undefined : state.selected || undefined,
+        );
+        updateVpnMessage();
+      } catch (e) {
+        error = message(e);
+      } finally {
+        vpnBusy = false;
         render();
       }
     };
@@ -217,3 +261,57 @@ call("get_snapshot")
     error = message(e);
     render();
   });
+
+function updateVpnMessage() {
+  vpnMessage = {
+    disconnected: "Выбери сервер и подключись.",
+    connecting: "Создаём туннель и проверяем HTTPS через него…",
+    connected: vpn.ownedByCaller
+      ? "Служба подтверждает работу обоих сетевых ядер."
+      : "VPN включён другой учётной записью Windows.",
+    disconnecting: "Отключаем туннель…",
+    failed: "Туннель отключён. Проверь сервер и подключись снова.",
+  }[vpn.phase];
+}
+async function refreshVpn() {
+  if (!native) return;
+  const before = JSON.stringify([vpn, serviceAvailable, vpnMessage]);
+  try {
+    const next = await tunnel("tunnel_status");
+    if (
+      !next ||
+      ![
+        "disconnected",
+        "connecting",
+        "connected",
+        "disconnecting",
+        "failed",
+      ].includes(next.phase)
+    )
+      throw new Error(
+        "Требуется служба Moth 0.3.1. Запусти Install-Service.cmd.",
+      );
+    vpn = next;
+    serviceAvailable = true;
+    updateVpnMessage();
+  } catch (e) {
+    serviceAvailable = false;
+    vpnMessage = message(e) + ". Запусти Install-Service.cmd из папки Moth.";
+  }
+  if (
+    before !== JSON.stringify([vpn, serviceAvailable, vpnMessage]) &&
+    !app.querySelector("dialog[open]")
+  )
+    render();
+}
+void refreshVpn();
+let refreshing = false;
+setInterval(async () => {
+  if (refreshing) return;
+  refreshing = true;
+  try {
+    await refreshVpn();
+  } finally {
+    refreshing = false;
+  }
+}, 1500);

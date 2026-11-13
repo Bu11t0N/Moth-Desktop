@@ -2,6 +2,8 @@
 mod scm;
 #[cfg(windows)]
 mod server;
+#[cfg(windows)]
+mod tunnel;
 
 #[cfg(windows)]
 fn main() {

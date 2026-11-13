@@ -30,7 +30,7 @@ export const native = isTauri();
 export const empty: Snapshot = {
   profiles: [],
   selected: null,
-  version: "0.3.0",
+  version: "0.3.1",
   engines: [],
   capabilities: {
     platform: "browser",
@@ -67,4 +67,17 @@ export async function serviceStatus(): Promise<ServiceHealth> {
   if (!native)
     throw new Error("Проверка службы доступна в настольном приложении.");
   return invoke<ServiceHealth>("service_status");
+}
+export type TunnelState = {
+  phase:
+    "disconnected" | "connecting" | "connected" | "disconnecting" | "failed";
+  ownedByCaller: boolean;
+  error: string | null;
+};
+export async function tunnel(
+  command: "tunnel_status" | "connect_vpn" | "disconnect_vpn",
+  id?: string,
+): Promise<TunnelState> {
+  if (!native) throw new Error("VPN доступен в настольном приложении Windows.");
+  return invoke<TunnelState>(command, id ? { id } : undefined);
 }

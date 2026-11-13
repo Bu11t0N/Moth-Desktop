@@ -1902,7 +1902,7 @@ dependencies = [
 
 [[package]]
 name = "moth-core"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "base64 0.22.1",
  "percent-encoding",
@@ -1915,7 +1915,7 @@ dependencies = [
 
 [[package]]
 name = "moth-desktop"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "moth-core",
  "moth-engine",
@@ -1930,7 +1930,7 @@ dependencies = [
 
 [[package]]
 name = "moth-engine"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "moth-core",
  "reqwest 0.12.28",
@@ -1947,7 +1947,7 @@ dependencies = [
 
 [[package]]
 name = "moth-ipc"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -1960,7 +1960,7 @@ dependencies = [
 
 [[package]]
 name = "moth-platform"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "moth-core",
  "serde",
@@ -1973,7 +1973,7 @@ dependencies = [
 
 [[package]]
 name = "moth-service"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "moth-core",
  "moth-engine",

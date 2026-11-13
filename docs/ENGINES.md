@@ -1,3 +1,5 @@
+> 0.3.1 update: see STATUS.md and ARCHITECTURE.md ADR-007 for implemented TUN and IPC v2. Earlier preview descriptions below document the original diagnostic baseline.
+
 # Desktop engines — M1a, preview 0.2.0
 
 ## Pinned upstream binaries and corresponding sources

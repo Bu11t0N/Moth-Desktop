@@ -31,7 +31,7 @@ try {
     $process = Start-Process -FilePath (Join-Path $env:ProgramFiles 'Moth Desktop\moth-service.exe') -ArgumentList '--status' -Credential $credential -LoadUserProfile -WorkingDirectory $env:SystemRoot -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput $userOut -RedirectStandardError $userErr
     if ($process.ExitCode -ne 0) { if(Test-Path $userErr){Get-Content $userErr}; throw 'Non-administrator client could not authenticate the service' }
     $health = Get-Content -LiteralPath $userOut -Raw | ConvertFrom-Json
-    if ($health.protocol -ne 1 -or $health.systemTunnel) { throw 'Unexpected non-administrator health response' }
+    if ($health.protocol -ne 2 -or -not $health.systemTunnel) { throw 'Unexpected non-administrator health response' }
     Write-Output 'Non-administrator service authentication passed.'
 } finally {
     if ($createdUser) { Remove-LocalUser -Name $testUser }

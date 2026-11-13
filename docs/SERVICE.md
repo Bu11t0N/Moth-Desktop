@@ -1,3 +1,5 @@
+> 0.3.1 update: see STATUS.md and ARCHITECTURE.md ADR-007 for implemented TUN and IPC v2. Earlier preview descriptions below document the original diagnostic baseline.
+
 # Windows service and IPC — M1b control plane, preview 0.3.0
 
 This milestone implements a real Windows Service and a local control channel.

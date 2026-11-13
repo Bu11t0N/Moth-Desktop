@@ -1,5 +1,9 @@
 //! Verified external engines; no Tauri, privileged operations or OS routing changes.
 mod job;
+#[cfg(windows)]
+mod tunnel;
+#[cfg(windows)]
+pub use tunnel::Tunnel;
 #[cfg(test)]
 mod tests;
 use job::ProcessJob;
@@ -37,6 +41,8 @@ pub enum EngineError {
     Probe,
     #[error("Эта платформа пока не поддерживается")]
     Unsupported,
+    #[error("Не удалось определить исходный сетевой адаптер; отключите другой VPN")]
+    Network,
 }
 
 #[derive(Clone, Copy)]
@@ -187,10 +193,7 @@ impl EngineSet {
                 }
             }
             Engine::SingBox => {
-                if !check {
-                    return Err(EngineError::Unsupported);
-                }
-                cmd.args(["check", "-c", "stdin"]);
+                cmd.args([if check { "check" } else { "run" }, "-c", "stdin"]);
             }
         }
         #[cfg(windows)]

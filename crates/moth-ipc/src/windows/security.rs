@@ -107,7 +107,7 @@ fn member(token: HANDLE, text: &str) -> Result<bool, IpcError> {
 pub fn authorize_client(
     pipe: &NamedPipeServer,
     development_sid: Option<&str>,
-) -> Result<(), IpcError> {
+) -> Result<String, IpcError> {
     // Synchronous scope only: no await/thread migration while impersonating.
     unsafe {
         if ImpersonateNamedPipeClient(pipe.as_raw_handle().cast()) == 0 {
@@ -138,7 +138,7 @@ pub fn authorize_client(
             } else if !member(token.0, "S-1-5-4")? && !member(token.0, "S-1-5-32-544")? {
                 return Err(IpcError::AccessDenied);
             }
-            Ok(())
+            user_sid(token.0)
         })();
         // Continuing on a thread with an unknown security context is forbidden.
         if RevertToSelf() == 0 {
