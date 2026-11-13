@@ -23,6 +23,9 @@ let vpn: TunnelState = {
   error: null,
 };
 let vpnBusy = false;
+let vpnOperation = 0;
+let vpnRevision = 0;
+let vpnRenderPending = false;
 let serviceAvailable = false;
 let vpnMessage = native
   ? "Проверяем службу Windows…"
@@ -58,6 +61,7 @@ function render() {
   const connected = vpn.phase === "connected" && serviceAvailable;
   const active =
     connected || vpn.phase === "connecting" || vpn.phase === "disconnecting";
+  const canCancel = vpnBusy && vpn.phase === "connecting" && vpn.ownedByCaller;
   const status = !serviceAvailable
     ? "Служба недоступна"
     : {
@@ -94,7 +98,7 @@ function render() {
       <div class="overview"><article class="connection-card"><div class="card-top"><span class="status"><i></i> ${status}</span><span class="muted small">СИСТЕМНЫЙ ТУННЕЛЬ</span></div>
         <div class="moth-orbit"><div class="orbit-inner">${moth}</div></div>
         <h2>${connected ? "Ты в сети через Мотылёк" : "Твой маршрут начинается здесь"}</h2><p class="card-description" role="status">${escapeHtml(vpnMessage)}</p>
-        <button class="connect" ${!native || !serviceAvailable || vpnBusy || (active && !vpn.ownedByCaller) || (!active && !selected) ? "disabled" : ""}>${vpnBusy ? "Выполняем…" : active ? "Отключить" : "Подключить"}</button><p class="protection-note">${icon("shield")} ${connected ? "Туннель проверен · kill switch пока недоступен" : "VPN сейчас не защищает трафик"}</p>
+        <button class="connect" ${!native || !serviceAvailable || (vpnBusy && !canCancel) || (active && !vpn.ownedByCaller) || (!active && !selected) ? "disabled" : ""}>${canCancel ? "Отменить подключение" : vpnBusy ? "Выполняем…" : active ? "Отключить" : "Подключить"}</button><p class="protection-note">${icon("shield")} ${connected ? "Туннель проверен · kill switch пока недоступен" : "VPN сейчас не защищает трафик"}</p>
       </article><div class="right-column"><article class="selected-card"><div class="card-top"><h3>Выбранный сервер</h3><span class="tiny-label">01</span></div>
         ${selected ? `<div class="server-emblem">${icon("servers")}</div><h2 class="selected-name">${escapeHtml(selected.name)}</h2><p class="endpoint">${escapeHtml(selected.host)}:${selected.port}</p><div class="tags"><span>${escapeHtml(selected.protocol)}</span><span>${escapeHtml(selected.security)}</span></div>` : `<div class="server-emblem">${icon("servers")}</div><h2>Пока пусто</h2><p class="muted">Добавь ссылку от своего провайдера<br>или владельца сервера.</p>`}
         <button class="text-link" data-page="servers">${selected ? "Все серверы" : "Открыть список серверов"} ${icon("arrow")}</button></article>
@@ -104,7 +108,7 @@ function render() {
         : page === "servers"
           ? `
       <div class="page-heading"><div><p class="eyebrow">ТВОИ МАРШРУТЫ</p><h1>Серверы</h1><p class="muted">VLESS и Trojan · ссылки и Base64-списки</p></div><button class="button" data-import>${icon("plus")} Добавить сервер</button></div>
-      ${state.profiles.length ? `<div class="server-list">${state.profiles.map((p) => `<article class="server-row ${p.id === state.selected ? "chosen" : ""}"><div class="server-symbol">${icon("servers")}</div><div class="server-info"><h3>${escapeHtml(p.name)}</h3><p>${escapeHtml(p.host)}:${p.port}</p><div class="tags"><span>${escapeHtml(p.protocol)}</span><span>${escapeHtml(p.transport)}</span><span>${escapeHtml(p.security)}</span></div></div><div class="server-actions"><button class="button subtle" data-probe="${p.id}" ${busy || probingId ? "disabled" : ""}>${probingId === p.id ? "Проверяем…" : "Проверить сервер"}</button><span class="probe-result" role="status">${escapeHtml(probeResults.get(p.id) || "")}</span><button class="button subtle" data-select="${p.id}" ${busy ? "disabled" : ""}>${p.id === state.selected ? "Выбран" : "Выбрать"}</button><button class="delete" data-delete="${p.id}" ${busy ? "disabled" : ""}>Удалить</button></div></article>`).join("")}</div>` : `<div class="empty-state"><div class="empty-art">${moth}</div><h2>Здесь начнётся твой маршрут</h2><p>Вставь ссылку VLESS или Trojan.<br>Секреты сохраняются только в настольном приложении.</p><button class="button" data-import>${icon("plus")} Добавить первый сервер</button></div>`}
+      ${state.profiles.length ? `<div class="server-list">${state.profiles.map((p) => `<article class="server-row ${p.id === state.selected ? "chosen" : ""}"><div class="server-symbol">${icon("servers")}</div><div class="server-info"><h3>${escapeHtml(p.name)}</h3><p>${escapeHtml(p.host)}:${p.port}</p><div class="tags"><span>${escapeHtml(p.protocol)}</span><span>${escapeHtml(p.transport)}</span><span>${escapeHtml(p.security)}</span></div></div><div class="server-actions"><button class="button subtle" data-probe="${p.id}" ${busy || probingId ? "disabled" : ""}>${probingId === p.id ? "Проверяем…" : "Проверить сервер"}</button><span class="probe-result" role="status">${escapeHtml(probeResults.get(p.id) || "")}</span><button class="button subtle" data-select="${p.id}" ${busy || active ? "disabled" : ""}>${p.id === state.selected ? "Выбран" : "Выбрать"}</button><button class="delete" data-delete="${p.id}" ${busy || active ? "disabled" : ""}>Удалить</button></div></article>`).join("")}</div>` : `<div class="empty-state"><div class="empty-art">${moth}</div><h2>Здесь начнётся твой маршрут</h2><p>Вставь ссылку VLESS или Trojan.<br>Секреты сохраняются только в настольном приложении.</p><button class="button" data-import>${icon("plus")} Добавить первый сервер</button></div>`}
     `
           : `<div class="page-heading"><div><p class="eyebrow">ПОД КРЫЛОМ</p><h1>Настройки</h1><p class="muted">Состояние этой сборки и доступные возможности</p></div></div>
       <article class="settings-card"><h2>Приложение</h2><div class="setting"><span>Версия</span><strong>${escapeHtml(state.version)} · Preview</strong></div><div class="setting"><span>Платформа</span><strong>${escapeHtml(state.capabilities.platform)}</strong></div><div class="setting"><span>Защищённое хранилище</span><strong>${state.capabilities.secureStorage ? "Windows DPAPI" : "Недоступно в этом режиме"}</strong></div><div class="setting"><span>Системный VPN</span><strong>Туннель Windows</strong></div><div class="setting"><span>Kill switch</span><strong>В разработке</strong></div></article>
@@ -165,21 +169,29 @@ function render() {
   const connectButton = app.querySelector<HTMLButtonElement>(".connect");
   if (connectButton)
     connectButton.onclick = async () => {
-      if (vpnBusy) return;
+      if (vpnBusy && !canCancel) return;
+      const operation = ++vpnOperation;
+      ++vpnRevision;
       vpnBusy = true;
       error = "";
       render();
       try {
-        vpn = await tunnel(
+        const next = await tunnel(
           active ? "disconnect_vpn" : "connect_vpn",
           active ? undefined : state.selected || undefined,
         );
+        if (operation !== vpnOperation) return;
+        ++vpnRevision;
+        vpn = next;
         updateVpnMessage();
       } catch (e) {
-        error = message(e);
+        if (operation === vpnOperation) error = message(e);
       } finally {
-        vpnBusy = false;
-        render();
+        if (operation === vpnOperation) {
+          ++vpnRevision;
+          vpnBusy = false;
+          render();
+        }
       }
     };
   const dialog = app.querySelector<HTMLDialogElement>("#import-dialog")!;
@@ -276,6 +288,7 @@ function updateVpnMessage() {
 async function refreshVpn() {
   if (!native) return;
   const before = JSON.stringify([vpn, serviceAvailable, vpnMessage]);
+  const revision = vpnRevision;
   try {
     const next = await tunnel("tunnel_status");
     if (
@@ -291,18 +304,22 @@ async function refreshVpn() {
       throw new Error(
         "Требуется служба Moth 0.3.1. Запусти Install-Service.cmd.",
       );
+    if (revision !== vpnRevision) return;
     vpn = next;
     serviceAvailable = true;
     updateVpnMessage();
   } catch (e) {
+    if (revision !== vpnRevision) return;
     serviceAvailable = false;
     vpnMessage = message(e) + ". Запусти Install-Service.cmd из папки Moth.";
   }
   if (
-    before !== JSON.stringify([vpn, serviceAvailable, vpnMessage]) &&
-    !app.querySelector("dialog[open]")
-  )
-    render();
+    before !== JSON.stringify([vpn, serviceAvailable, vpnMessage]) ||
+    vpnRenderPending
+  ) {
+    vpnRenderPending = !!app.querySelector("dialog[open]");
+    if (!vpnRenderPending) render();
+  }
 }
 void refreshVpn();
 let refreshing = false;

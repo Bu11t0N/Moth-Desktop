@@ -1,6 +1,4 @@
-> 0.3.1 update: see STATUS.md and ARCHITECTURE.md ADR-007 for implemented TUN and IPC v2. Earlier preview descriptions below document the original diagnostic baseline.
-
-# Desktop engines — M1a, preview 0.2.0
+# Desktop engines — 0.3.1
 
 ## Pinned upstream binaries and corresponding sources
 
@@ -24,54 +22,22 @@ explicit development fetch command/CI, never on application startup.
 
 ## Runtime behavior
 
-`moth-engine` has no Tauri dependency and never changes system proxy, routes, DNS or
-firewall. It launches Xray with an authenticated SOCKS listener on 127.0.0.1, selects
-a profile internally and issues a fixed HTTPS 204 request. No arbitrary path, command,
-configuration or check URL can be submitted by the frontend. Port allocation has
-a brief bind-to-launch race; random proxy credentials plus process-exit checks prevent
-successful checks through an unrelated unauthenticated listener.
+Profiles/configuration are private Rust values. No engine path, raw JSON or arbitrary check URL is accepted from the frontend. Config travels through stdin, core output is discarded and only OS-essential environment is inherited. Every launch rechecks the executable SHA-256 pin compiled into Moth.
 
-Configuration travels on stdin; EOF is explicit. Raw core stdout/stderr is discarded.
-Only OS-essential environment variables are inherited, preventing Xray config-directory
-overrides from another installation. HTTPS verification uses rustls with its trust roots;
-custom user CA support is not yet implemented for the probe request itself. Remote server
-TLS verification remains enabled in Xray. No insecure certificate option is imported.
+Probes are short-lived authenticated SOCKS5h -> Xray -> fixed HTTPS 204, with rustls certificate verification and no direct/redirect fallback. They do not change system routing.
 
-Config write, startup and requests have bounded timeouts. Normal completion/error
-reaps the engine. Tokio kill-on-drop handles cancellation; Windows additionally uses
-a non-inheritable Job Object with KILL_ON_JOB_CLOSE. The Windows job provides OS-level
-child cleanup if the owning GUI process exits. This is process containment, not kill switch.
-Linux cancellation has Tokio process cleanup; abnormal parent-exit containment remains
-a Linux service responsibility.
+Service connections execute sing-box TUN (gVisor stack) -> UUID-authenticated local VLESS -> Xray -> selected server. The bridge explicitly binds 127.0.0.1; Xray binds the upstream physical interface. The server hostname is resolved before activation, numeric address is pinned for that connection, TLS/Reality SNI and transport host are preserved. DNS uses DoH to 1.1.1.1 through the bridge. Successful startup requires an HTTPS request sourced from 172.19.0.1, not a process-start indication.
 
-## Evidence and limits
+The official sing-box executable embeds Wintun via sing-tun v0.7.13. No external writable wintun.dll is loaded or shipped separately. The upstream embedded loader and adapter lifecycle are linked in ARCHITECTURE.md.
 
-Native config matrix: VLESS/Trojan over TCP, WS, gRPC and XHTTP; VLESS Reality/Vision;
-unencrypted VLESS only to a loopback/private destination. Tests call `xray run -test`
-and `sing-box check`. A real loopback VLESS client/server carries an HTTP 204 request,
-then rejects a wrong UUID. This proves that path, not all transports' interoperability.
-No remote provider, TLS/Reality handshake, UDP or DNS-leak acceptance is claimed yet.
+Config write, validation, process startup and requests have bounded timeouts. Tokio kill-on-drop plus Windows KILL_ON_JOB_CLOSE jobs own engines. Private adapter routes/DNS and dynamic WFP filters disappear with teardown. This is process containment and fail-open cleanup, not a persistent kill switch.
 
-TUN planning: sing-box -> UUID-authenticated local VLESS -> Xray -> selected server.
-DNS route uses the bridge and a remote DoH resolver. The configuration validates, but
-is NOT executed: binding/excluding upstream sockets, interface discovery, network recovery,
-privileged service IPC and firewall policy remain M1b/M2 work. `strict_route` alone is
-not a system kill switch. There is deliberately no sing-box run path in this crate yet.
+## Verification and remaining limits
+
+The native configuration matrix covers VLESS/Trojan TCP, WS, gRPC, XHTTP, Reality/Vision, private-only unencrypted VLESS. Loopback tests carry HTTP 204 and reject wrong credentials, including an interface-bound authenticated bridge. Disposable Windows VM tests exercise actual TUN routing and service lifecycle; exact passing evidence is recorded in STATUS.md after completion. No all-provider/transport interoperability or comprehensive DNS/IPv6 leak guarantee is implied.
 
 ## Android patch review
 
-- Android `VpnService.protect(fd)` controls are Android-specific; do not transplant.
-- The patched sing-tun close/dispatcher path must be re-evaluated with actual desktop
-  TUN shutdown tests. Successful `check` is not sufficient evidence.
-- Go module/qpack compatibility patches used to combine cores in one Android library
-  are unnecessary for separate desktop processes.
-- Local Xray test servers require explicit permission for private destinations in the
-  freedom outbound's finalRules. Only the isolated test server enables this permission.
+Android VpnService.protect is not transplanted to desktop. Separate upstream core processes avoid the Android combined-libbox qpack conflicts. Desktop shutdown is verified separately rather than assuming Android patches apply. Only isolated test server freedom outbounds permit private destinations. No engine source patches are used.
 
-## Next gate
-
-M1b now supplies the Windows diagnostic service, authenticated pipe, protected installation
-directory and versioned GUI/service protocol (see SERVICE.md). Remaining gate: upstream
-binding/exclusion, persistent runtime lifecycle and TUN/DNS tests in an isolated VM.
-Hash-then-execute in a user-writable development folder is not a defense against malware
-running as the same user; privileged service engines must live in an administrator-owned location.
+Production signing, full dependency/license audit, network/sleep recovery, kill switch, native GUI acceptance and Linux service containment remain later gates. Hash-then-execute in a writable development directory does not defend against same-user malware; privileged production engines use the protected installation.

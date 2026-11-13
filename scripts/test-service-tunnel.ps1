@@ -40,6 +40,8 @@ try {
     $link="vless://$id@127.0.0.1:$port`?security=none&type=tcp"
     $connected=Invoke-Client '--connect' $link $Credential
     if($connected.phase -ne 'connected' -or -not $connected.ownedByCaller){throw 'Standard-user VPN did not pass real TUN HTTPS/DNS verification'}
+    $dns=Resolve-DnsName 'example.com' -Type A -Server '172.19.0.2' -DnsOnly -NoHostsFile
+    if(-not @($dns | Where-Object IPAddress).Count){throw 'Explicit DNS query through the TUN gateway failed'}
     $other=Invoke-Client '--tunnel-status'
     if($other.phase -ne 'connected' -or $other.ownedByCaller){throw 'Connection SID ownership was lost'}
     $denied=Invoke-Client '--disconnect'

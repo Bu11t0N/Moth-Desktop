@@ -1,116 +1,49 @@
-> 0.3.1 update: see STATUS.md and ARCHITECTURE.md ADR-007 for implemented TUN and IPC v2. Earlier preview descriptions below document the original diagnostic baseline.
+# Windows service — 0.3.1
 
-# Windows service and IPC — M1b control plane, preview 0.3.0
+GUI (ordinary user) -> authenticated named pipe -> LocalSystem service -> pinned engines.
+The service owns the connection, independently of the GUI window. No connection is restored automatically after a service restart.
 
-This milestone implements a real Windows Service and a local control channel.
-It does not run a system TUN, change DNS/routes/firewall, implement kill switch,
-or claim that a positive service health response protects traffic.
+## Installation
 
-## Components
+Extract the whole Windows package and run Install-Service.cmd. The bootstrap requests Windows UAC and calls Service.ps1 using the built-in Windows PowerShell 5.1.
+It creates a protected fixed installation at %ProgramFiles%/Moth Desktop, copies only the service and two pinned cores (plus notices), validates ACLs, registers an automatic-start own-process LocalSystem service and verifies its health. Installation alone does not start a VPN.
+Existing directories/services are refused; in-place upgrade is not yet implemented. Remove an older service explicitly and review/move its preserved installation directory before a new installation.
 
-- `moth-ipc`: Tauri-independent versioned protocol, framed transport and Windows identities.
-- `moth-service`: SCM dispatcher, stop/shutdown handling, bounded request server and probe executor.
-- Tauri: authenticates the production service, uses it for server probes when available,
-  and exposes a separate service health action in Settings.
-- Existing local probe remains available without installation in this development preview.
-  An authentication/access/version/protocol error never triggers a local fallback.
+Manual commands in administrator PowerShell, from the extracted package:
 
-## Production trust boundaries
+~~~powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Service.ps1 -Action Install -PackageDirectory .
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Service.ps1 -Action Status
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Service.ps1 -Action Remove
+~~~
 
-Service name: `MothDesktopService`; account: LocalSystem; startup: manual in this preview.
-Fixed pipe: `\\.\pipe\Moth.Desktop.Service.v1`.
+Removal stops/unregisters the service and preserves its files. GUI profiles stay in the current user's DPAPI store.
 
-The client queries Windows SCM for the registered RUNNING PID, opens the local pipe with
-identification-only SQOS and explicit read/write-data rights, checks the actual server PID,
-checks SCM declares an own-process LocalSystem service, and rechecks SCM. This uses ordinary
-query rights rather than requiring access to another account's process token. Profile serialization/writing to
-the pipe happens only after peer verification. A squatted endpoint cannot receive credentials.
+## Authentication and installation boundary
 
-The server requires LocalSystem, a protected fixed Program Files installation and verified
-engine hashes. The first pipe uses FIRST_PIPE_INSTANCE, every instance rejects remote
-connections. Its explicit DACL grants SYSTEM/admin full access and interactive users only
-read/write-data, read attributes and synchronization. It deliberately omits generic write
-and FILE_CREATE_PIPE_INSTANCE for interactive clients. No Everyone/Anonymous access.
+Service name: MothDesktopService. Stable endpoint: \\.\pipe\Moth.Desktop.Service.v1; the endpoint name is stable while the message protocol is version 2.
+The client queries SCM for RUNNING PID, own-process type and LocalSystem account, opens the pipe with identification-only SQOS and explicit data rights, verifies the actual server PID and rechecks SCM before writing credentials. It needs no SeDebugPrivilege.
 
-After reading a bounded frame, the server identifies the actual pipe client's token in a
-synchronous impersonation scope. AppContainers and low-integrity callers are rejected;
-interactive users or administrators are allowed. RevertToSelf must succeed before any
-engine work or await; failure aborts the service process. No caller-supplied SID is trusted.
-Requests do not expose another user's profiles: each probe carries its own validated link;
-the service has no persistent shared profile store or connection state in this milestone.
+The first server pipe uses FIRST_PIPE_INSTANCE; every instance rejects remote clients. Its DACL grants SYSTEM/admin full access, interactive users data read/write, read attributes and synchronization, excluding FILE_CREATE_PIPE_INSTANCE.
+After a bounded read, synchronous pipe impersonation obtains the actual caller SID. Low-integrity and AppContainer clients are rejected. Interactive/admin membership is required. RevertToSelf must succeed before any await or engine execution. No caller-supplied SID is trusted.
 
-The service requires `%ProgramFiles%\Moth Desktop`, rejects reparse points and untrusted
-ownership/write ACLs on the installation root, engines directory, service and core binaries.
-Only SYSTEM/Administrators may own or write these objects. Install refuses an existing
-directory/service instead of silently taking it over. Production is not launched from a
-user-writable source checkout. Administrator compromise is outside this boundary.
+Production requires the protected Program Files location, SYSTEM/Administrators ownership and no untrusted write ACLs on root, engines, service and core binaries. Reparse points are rejected. Both engine hashes are verified against compile-time pins at each launch.
 
-## Protocol v1
+## IPC v2
 
-Each direction uses a 4-byte little-endian length and one JSON envelope (1..32768 bytes).
-Read/write have timeouts. Unknown fields/commands, malformed JSON, oversized/empty frames,
-wrong response correlation IDs and incompatible versions are rejected. Each request has a
-UUID correlation ID. Probe requests contain secrets and do not implement Debug; buffers
-and the owned link are cleared on drop where owned by the transport boundary.
+A 4-byte little-endian length precedes a JSON envelope (1..32768 bytes). Unknown fields/commands, invalid versions, malformed JSON and wrong response correlation are rejected. Frames have bounded read/write times; clients wait up to 30 seconds for a response.
+Commands: status, probe {link}, connect {link}, disconnect, tunnelStatus. No arbitrary executable, path, raw core JSON, check URL, OS command or service stop action is accepted. The service strictly re-imports exactly one link. Credential-bearing commands/buffers are zeroized at the owned IPC boundary and never implement Debug.
 
-Supported commands: `status {}` and `probe {link}`. There is no arbitrary command, core path,
-raw engine JSON, URL-to-check, service stop command or system networking operation in IPC.
-The service re-imports the link using the same strict parser, requires exactly one profile,
-then invokes the pinned engine. Replies contain status metadata, measured latency or a
-closed set of error codes. Core output and credentials are not logged or echoed.
-At most 8 requests are active, 1 probe runs at a time, frames have a 2s deadline and a probe
-has a 25s execution deadline. Shutdown aborts active tasks, dropping owned engine jobs.
+One system connection is owned by the authenticated Windows SID, across pipe requests and GUI restarts. A different account can see the phase but cannot disconnect or replace it. A connecting operation can be cancelled by its owner. Status returns phase/ownership/error code, never a profile, endpoint or credential.
+The service accepts at most eight active requests and one probe at a time. Connection startup is bounded to 25 seconds. Successful startup requires an HTTPS 204 response sourced from the TUN address. A 500 ms monitor checks both processes; failure tears down the remaining engine and publishes failed state.
 
-## Development console
+## Networking/lifecycle limits
 
-`moth-service --console` is an ordinary-user harness with an explicitly different pipe name,
-`\\.\pipe\Moth.Desktop.Dev.<PID>`. It refuses LocalSystem. Development clients require the
-explicit expected PID and the same Windows user SID. The normal GUI never discovers or
-falls back to this endpoint. It permits non-privileged IPC integration tests on the host.
-No service installation or network setting change occurs in those tests.
+sing-box owns the private Wintun adapter, its IPv4/IPv6 routes, DNS and dynamic WFP session. Physical adapter DNS/routes are never overwritten. Xray sockets bind to the upstream interface discovered before TUN activation, independently of sing-box. The local bridge explicitly binds loopback.
+Job Object termination and kill-on-drop contain both children on cancellation/service exit. This teardown is fail-open: there is no persistent OS kill switch. No comprehensive DNS/IPv6 leak guarantee, automatic sleep/network recovery or simultaneous-VPN compatibility is claimed. More-specific pre-existing routes/LAN and explicitly bound applications can bypass TUN.
 
-## Explicit manual install/remove (development builds)
+## Development and evidence
 
-Unsigned development packages must be reviewed before administrator installation.
-Extract the entire package; PowerShell 7 is required. No GUI action installs the service.
-In an elevated PowerShell 7 window, from the extracted directory:
-
-```powershell
-./Service.ps1 -Action Install -PackageDirectory .
-```
-
-The script creates the protected directory/ACLs, copies service/engines/notices, verifies the
-security policy, registers a manual-start LocalSystem service, starts it and authenticates
-its health response. It never changes system network settings. It refuses in-place upgrades.
-
-```powershell
-./Service.ps1 -Action Status
-./Service.ps1 -Action Remove
-```
-
-Removal stops and unregisters this service, preserving installation files for review.
-Do not infer VPN protection from RUNNING or a successful health response.
-
-## Evidence and remaining acceptance
-
-Host tests: real console process/pipe health, strict version/frame handling, recovery after
-bad requests, first-instance protection and rejection of a fake server before a secret is
-sent. Core share-link roundtrip covers reserved credentials and IPv6. UI test keeps service
-health distinct from VPN status. Windows SCM install/start/health/stop/restart/removal is
-configured on a disposable GitHub-hosted runner only (`scripts/test-service-scm.ps1`).
-
-CI also creates an ephemeral non-administrator account and runs the real client against
-the installed service; it is removed during cleanup. Multiple-logon-session acceptance, low-integrity/AppContainer
-negative tests, independent security review and mid-probe service-crash cleanup remain
-required before production release. Console/administrator CI tests do not establish them.
-Linux uses the portable protocol crate but has no implemented daemon/transport yet.
-
-Next: interface discovery/upstream route binding, then actual TUN/DNS in an isolated VM.
-Per-user ownership and reconnect/restore policy must be added when persistent tunnels exist.
-
-## References
-
-- https://learn.microsoft.com/en-us/windows/win32/ipc/named-pipe-security-and-access-rights
-- https://learn.microsoft.com/en-us/windows/win32/api/namedpipeapi/nf-namedpipeapi-impersonatenamedpipeclient
-- https://learn.microsoft.com/en-us/windows/win32/ipc/pipe-functions
-- https://docs.rs/windows-service/0.8.1/windows_service/
+--console uses an explicit development pipe and same-user/PID validation. It refuses LocalSystem and system connect/disconnect commands. The GUI never falls back to it. Local tests never modify networking.
+--status and --tunnel-status are authenticated production diagnostics. --connect reads a bounded link from stdin (never command-line arguments); --disconnect uses the same SID ownership rules.
+Disposable CI VM tests: scripts/test-tun.ps1 and scripts/test-service-scm.ps1, including test-service-tunnel.ps1. See STATUS.md for actual results; configured tests are not evidence of passing acceptance.

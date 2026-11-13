@@ -304,3 +304,69 @@ test("VPN follows service transitions and loses connected state when service dis
     page.getByRole("button", { name: "Подключить", exact: true }),
   ).toBeDisabled();
 });
+
+test("owner can cancel a connecting operation without a stale connected state", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const w = window as unknown as {
+      isTauri: boolean;
+      __TAURI_INTERNALS__: unknown;
+    };
+    w.isTauri = true;
+    let phase = "disconnected";
+    let finish: (() => void) | undefined;
+    w.__TAURI_INTERNALS__ = {
+      invoke: async (cmd: string) => {
+        if (["tunnel_status", "connect_vpn", "disconnect_vpn"].includes(cmd)) {
+          if (cmd === "connect_vpn") {
+            phase = "connecting";
+            await new Promise<void>((r) => {
+              finish = r;
+            });
+          }
+          if (cmd === "disconnect_vpn") {
+            phase = "disconnected";
+            finish?.();
+          }
+          return {
+            phase,
+            ownedByCaller: phase !== "disconnected",
+            error: null,
+          };
+        }
+        return {
+          profiles: [
+            {
+              id: "vpn",
+              name: "Сервер",
+              host: "example.com",
+              port: 443,
+              protocol: "VLESS",
+              transport: "TCP",
+              security: "TLS",
+            },
+          ],
+          selected: "vpn",
+          version: "0.3.1",
+          engines: [],
+          capabilities: {
+            platform: "windows",
+            secureStorage: true,
+            systemTunnel: true,
+            killSwitch: false,
+          },
+        };
+      },
+    };
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Подключить", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Отменить подключение", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Подключить", exact: true }),
+  ).toBeEnabled();
+  await expect(page.getByText("VPN сейчас не защищает трафик")).toBeVisible();
+});

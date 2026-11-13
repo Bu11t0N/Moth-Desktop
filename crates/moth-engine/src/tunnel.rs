@@ -219,6 +219,18 @@ mod acceptance {
         let engines = EngineSet::new(development_directory().unwrap());
         let fixture = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let target_port = fixture.local_addr().unwrap().port();
+        let udp = tokio::net::UdpSocket::bind((Ipv4Addr::LOCALHOST, target_port))
+            .await
+            .unwrap();
+        let udp_endpoint = tokio::spawn(async move {
+            let mut buffer = [0; 64];
+            loop {
+                let (n, peer) = udp.recv_from(&mut buffer).await.unwrap();
+                if &buffer[..n] == b"moth-tun-fixture" {
+                    let _ = udp.send_to(b"moth-udp-ok", peer).await;
+                }
+            }
+        });
         let endpoint = tokio::spawn(async move {
             loop {
                 let (mut socket, _) = fixture.accept().await.unwrap();
@@ -260,6 +272,29 @@ mod acceptance {
                 .await
                 .unwrap();
             assert_eq!(response.status(), 204);
+            let ipv6 = reqwest::Client::builder()
+                .no_proxy()
+                .timeout(Duration::from_secs(5))
+                .build()
+                .unwrap()
+                .get("http://[2001:db8::123]:18080/generate_204")
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(ipv6.status(), 204);
+            for (bind, target) in [
+                ("0.0.0.0:0", "198.18.0.123:18080"),
+                ("[::]:0", "[2001:db8::123]:18080"),
+            ] {
+                let socket = tokio::net::UdpSocket::bind(bind).await.unwrap();
+                socket.send_to(b"moth-tun-fixture", target).await.unwrap();
+                let mut bytes = [0; 64];
+                let (n, _) = timeout(Duration::from_secs(5), socket.recv_from(&mut bytes))
+                    .await
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(&bytes[..n], b"moth-udp-ok");
+            }
             tunnel.stop().await;
             tokio::time::sleep(Duration::from_secs(2)).await;
             assert!(reqwest::Client::builder()
@@ -274,5 +309,6 @@ mod acceptance {
         }
         server.stop().await.unwrap();
         endpoint.abort();
+        udp_endpoint.abort();
     }
 }
