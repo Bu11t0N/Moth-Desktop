@@ -26,3 +26,5 @@ go.mod/go.sum and upstream build configuration for the transitive Go dependency 
 Dependency/license inventory is a release gate; this short list is not a complete transitive inventory.
 
 The embedded amd64 Wintun DLL matches official Wintun 0.14.1: SHA-256 e5da8447dc2c320edc0fc52fa01885c103de8c118481f683643cacc3220dafce. Official archive SHA-256: 07c256185d6ee3652e09fa55c0b673e2624b565e02c4b9091c79ca7d2f24ef51 (https://www.wintun.net/builds/wintun-0.14.1.zip). The prebuilt-binary license is preserved in licenses/Wintun-0.14.1.txt. Git blob aee04e77bfbd6601adbcd5a46435f059e31cf6e4 matches sing-tun v0.7.13 internal/wintun/amd64/wintun.dll.
+
+Version 0.3.2 enables Tauri tray-icon support and adds tauri-plugin-single-instance 2.5.5 (https://github.com/tauri-apps/plugins-workspace) and tray-icon 0.25.1 (https://github.com/tauri-apps/tray-icon). Both are MIT OR Apache-2.0; their license texts are preserved in licenses/single-instance-* and licenses/tray-icon-*. Cargo.lock pins their resolved versions.

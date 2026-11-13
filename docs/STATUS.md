@@ -1,6 +1,6 @@
 # Status — 2026-11-13
 
-Version 0.3.2 is in validation. Version 0.3.1 remains the released system TUN baseline.
+Version 0.3.2: native tray lifecycle update over the 0.3.1 system TUN baseline.
 
 ## Implemented
 
@@ -20,7 +20,13 @@ Version 0.3.2 is in validation. Version 0.3.1 remains the released system TUN ba
 
 - Local Rust tests pass, including two new tray shutdown tests (confirmation, IPC failure and other-account isolation).
 - Formatting, Clippy with warnings denied, TypeScript/Vite and seven Playwright tests pass.
-- Native tray/live-VPN lifecycle acceptance and Windows/Linux CI are pending.
+- Implementation 2512223: Windows and Linux CI passed: https://github.com/Bu11t0N/Moth-Desktop/actions/runs/43450775552
+- Disposable Windows VM: native tray registered; real VPN remains connected after the native window close event; a real second GUI process exits and restores the same window; the Exit menu handler confirms disconnection and leaves no active TUN adapter.
+- Local native release 0.3.2: observed the Moth icon in the Windows tray overflow; native close hides the window while preserving PID; second launch exits with code 0 and restores the same HWND/PID. Host VPN was disconnected throughout this GUI check and no host networking was changed.
+- Native lifecycle acceptance is debug-only and not compiled into release builds.
+- GUI 0.3.2 works with installed service 0.3.1 (IPC v2); no service upgrade is required.
+- 0.3.2 ZIP extracted and every file hash verified under the current Windows Desktop known folder (OneDrive/Desktop/Moth/0.3.2). The current and earlier Desktop launch shortcuts point to the new version; 0.3.1 files are preserved.
+- 0.3.2 ZIP SHA-256: 84b67ac6d5776cf81c097317874f67d497d09e2e263b99673482f9caaf12ad69.
 
 ## 0.3.1 verification
 
