@@ -34,17 +34,16 @@ jobs:
       - name: Windows SCM install, authenticated health, stop/start and removal
         shell: pwsh
         run: ./scripts/test-service-scm.ps1
-      - shell: pwsh
-        run: Copy-Item scripts/Service.ps1 target/release/Service.ps1
+      - name: Package versioned Windows ZIP
+        id: package
+        shell: pwsh
+        run: |
+          ./scripts/package-windows.ps1 -OutputDirectory target/artifacts
+          "version=$((Get-Content package.json -Raw | ConvertFrom-Json).version)" >> $env:GITHUB_OUTPUT
       - uses: actions/upload-artifact@v4
         with:
-          name: Moth-Windows-unsigned-development-preview
-          path: |
-            target/release/moth-desktop.exe
-            target/release/moth-service.exe
-            target/release/Service.ps1
-            target/release/engines/
-            target/release/notices/
+          name: Moth-${{ steps.package.outputs.version }}-windows-x64
+          path: target/artifacts/*.zip
   linux-core:
     runs-on: ubuntu-24.04
     steps:

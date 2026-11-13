@@ -98,6 +98,11 @@ impl Controller {
         self.status(caller).await
     }
     pub async fn monitor(&self) {
+        // Serialize teardown with connect/disconnect: a new session must not
+        // be published while an older failed session is still being reaped.
+        let Ok(_guard) = self.operation.try_lock() else {
+            return;
+        };
         let mut state = self.inner.lock().await;
         if let Some(session) = &mut state.session {
             if !session.alive() {
