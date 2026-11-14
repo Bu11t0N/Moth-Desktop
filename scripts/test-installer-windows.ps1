@@ -43,6 +43,13 @@ function Run-Installer([string]$Path,[bool]$Success=$true) {
         }
         throw "Unexpected installer exit code: $($process.ExitCode)."
     }
+    if (-not $Success) {
+        $latest=Get-ChildItem -LiteralPath $env:ProgramFiles -Directory -Filter '*.moth-payload' | Sort-Object CreationTimeUtc -Descending | Select-Object -First 1
+        if (-not $latest -or -not (Test-Path -LiteralPath (Join-Path $latest.FullName 'maintenance-error.txt')) -or
+            (Get-Content -LiteralPath (Join-Path $latest.FullName 'maintenance-error.txt') -Raw).Trim() -ne 'Started service version mismatch.') {
+            throw 'The rollback fixture did not reach the final started-service health assertion.'
+        }
+    }
     Check-Profiles
 }
 function Check-Installed {

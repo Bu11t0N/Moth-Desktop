@@ -5,6 +5,14 @@ param(
     [switch]$InstallDesktop
 )
 $ErrorActionPreference = 'Stop'
+# Do not inherit caller-controlled module/search/install roots into elevated
+# maintenance. This also prevents PowerShell 7 module paths breaking Windows
+# PowerShell 5.1 when the graphical installer is launched from a pwsh session.
+$env:PSModulePath = [IO.Path]::Combine($PSHOME,'Modules')
+$env:SystemRoot = [Environment]::GetFolderPath('Windows')
+$env:ProgramFiles = [Environment]::GetFolderPath('ProgramFiles')
+$env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+if ([IntPtr]::Size -ne 8) { throw '64-bit PowerShell is required for Moth Desktop maintenance.' }
 $serviceName = 'MothDesktopService'
 $installRoot = Join-Path $env:ProgramFiles 'Moth Desktop'
 $expectedVersion = '0.3.3'
