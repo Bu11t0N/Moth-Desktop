@@ -1,0 +1,232 @@
+#!/usr/bin/env python3
+"""Real root daemon/TUN acceptance, exclusively in a disposable hosted Ubuntu VM."""
+import http.server
+import ipaddress
+import json
+import os
+from pathlib import Path
+import secrets
+import shutil
+import socket
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import uuid
+
+
+def sink():
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(204)
+            self.send_header("Connection", "close")
+            self.end_headers()
+
+        def log_message(self, *_):
+            pass
+
+    class Server6(http.server.ThreadingHTTPServer):
+        address_family = socket.AF_INET6
+
+    for family, address in [(socket.AF_INET, "10.231.90.2"),
+                            (socket.AF_INET6, "fd24:4d4f:5448::2")]:
+        server = (Server6 if family == socket.AF_INET6 else http.server.ThreadingHTTPServer)((address, 18080), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        udp = socket.socket(family, socket.SOCK_DGRAM)
+        udp.bind((address, 18081))
+
+        def echo(sock):
+            while True:
+                data, peer = sock.recvfrom(2048)
+                sock.sendto(data, peer)
+
+        threading.Thread(target=echo, args=(udp,), daemon=True).start()
+    while True:
+        time.sleep(1)
+
+
+def run(*args, data=None, check=True, timeout=40):
+    result = subprocess.run(args, input=data, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
+    if check and result.returncode:
+        # Request/config contents and stderr are deliberately not included.
+        raise RuntimeError(f"Command failed: {args[0]} ({result.returncode})")
+    return result
+
+
+def cli(user, action, data=None):
+    result = run("runuser", "-u", user, "--", "/usr/lib/moth-desktop/moth-service", action, data=data)
+    return json.loads(result.stdout)
+
+
+def wait(test, reason, seconds=20):
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        try:
+            if test():
+                return
+        except (RuntimeError, json.JSONDecodeError, FileNotFoundError):
+            pass
+        time.sleep(0.1)
+    raise RuntimeError(reason)
+
+
+def snapshot():
+    result = {}
+    for family in ("-4", "-6"):
+        result[family] = run("ip", family, "-N", "-j", "rule", "show").stdout
+        routes = json.loads(run("ip", family, "-N", "-j", "route", "show", "table", "main").stdout)
+        for route in routes:
+            route.pop("expires", None)
+        result[family + "routes"] = json.dumps(routes, sort_keys=True)
+    for kind in ("dns", "domain", "default-route"):
+        result[kind] = run("resolvectl", kind).stdout
+    result["resolv.conf"] = Path("/etc/resolv.conf").read_bytes()
+    return result
+
+
+def main():
+    if os.environ.get("GITHUB_ACTIONS") != "true" or os.environ.get("RUNNER_OS") != "Linux" or os.geteuid() != 0:
+        raise RuntimeError("Root inside a disposable hosted Linux CI VM is required")
+    root = Path("/usr/lib/moth-desktop")
+    unit = Path("/etc/systemd/system/moth-desktop.service")
+    if root.exists() or unit.exists() or Path("/sys/class/net/moth0").exists():
+        raise RuntimeError("Existing installation/interface must never be replaced by acceptance")
+    if Path("/etc/resolv.conf").resolve() != Path("/run/systemd/resolve/stub-resolv.conf"):
+        raise RuntimeError("The supported resolved stub configuration is required")
+    repo = Path(__file__).resolve().parent.parent
+    users = ("moth-ci-owner", "moth-ci-other")
+    children = []
+    created_users = []
+    namespace = False
+    veth = False
+    os.umask(0o077)
+    with tempfile.TemporaryDirectory(prefix="moth-linux-acceptance-") as temporary:
+        work = Path(temporary)
+        try:
+            for user, uid in zip(users, (23101, 23102)):
+                if run("id", user, check=False).returncode == 0 or run("getent", "passwd", str(uid), check=False).returncode == 0:
+                    raise RuntimeError("Acceptance account already exists")
+                run("useradd", "--uid", str(uid), "--user-group", "--create-home", "--shell", "/usr/sbin/nologin", user)
+                created_users.append((user, uid))
+                run("systemctl", "start", f"user-runtime-dir@{uid}.service")
+            run("ip", "netns", "add", "moth-ci-sink")
+            namespace = True
+            run("ip", "link", "add", "moth-ci-host", "type", "veth", "peer", "name", "moth-ci-peer")
+            veth = True
+            run("ip", "link", "set", "moth-ci-peer", "netns", "moth-ci-sink")
+            run("ip", "addr", "add", "10.231.90.1/30", "dev", "moth-ci-host")
+            run("ip", "-6", "addr", "add", "fd24:4d4f:5448::1/126", "dev", "moth-ci-host", "nodad")
+            run("ip", "link", "set", "moth-ci-host", "up")
+            for args in [("addr", "add", "10.231.90.2/30", "dev", "moth-ci-peer"),
+                         ("-6", "addr", "add", "fd24:4d4f:5448::2/126", "dev", "moth-ci-peer", "nodad"),
+                         ("link", "set", "moth-ci-peer", "up"), ("link", "set", "lo", "up")]:
+                run("ip", "-n", "moth-ci-sink", *args)
+            # Copy the non-secret fixture program into the root-only work directory.
+            fixture = work / "fixture.py"
+            shutil.copyfile(__file__, fixture)
+            children.append(subprocess.Popen(["ip", "netns", "exec", "moth-ci-sink", sys.executable, str(fixture), "sink"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+            root.mkdir(mode=0o755)
+            (root / "engines").mkdir(mode=0o755)
+            for source, destination in [(repo / "target/debug/moth-service", root / "moth-service"),
+                                        (repo / ".local/engines/linux-x64/xray", root / "engines/xray"),
+                                        (repo / ".local/engines/linux-x64/sing-box", root / "engines/sing-box")]:
+                shutil.copyfile(source, destination)
+                destination.chmod(0o755)
+            shutil.copyfile(repo / "packaging/linux/moth-desktop.service", unit)
+            unit.chmod(0o644)
+            run("systemctl", "daemon-reload")
+            server_id = str(uuid.uuid4())
+            listener = socket.socket()
+            listener.bind(("127.0.0.1", 0))
+            port = listener.getsockname()[1]
+            listener.close()
+            config = {"log": {"loglevel": "none"},
+                      "inbounds": [{"listen": "127.0.0.1", "port": port, "protocol": "vless", "settings": {"decryption": "none", "clients": [{"id": server_id}]}}],
+                      "outbounds": [{"protocol": "freedom", "settings": {}, "streamSettings": {"sockopt": {"mark": 0x4D4F5448}}}]}
+            config_path = work / "server.json"
+            config_path.write_text(json.dumps(config))
+            children.append(subprocess.Popen([str(root / "engines/xray"), "run", "-config", str(config_path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+            profile = f"vless://{server_id}@127.0.0.1:{port}?encryption=none&security=none&type=tcp".encode()
+            baseline = snapshot()
+            run("systemctl", "start", "moth-desktop.service")
+            wait(lambda: cli(users[0], "--status")["systemTunnel"], "Ordinary-user authenticated daemon health failed")
+
+            def connected():
+                result = cli(users[0], "--connect", profile)
+                if result.get("phase") != "connected" or not result.get("ownedByCaller"):
+                    raise RuntimeError("Real service HTTPS/TUN verification failed")
+
+            def restored():
+                wait(lambda: not Path("/sys/class/net/moth0").exists(), "Private TUN survived teardown")
+                if Path("/run/moth-desktop/network-v1.json").exists() or snapshot() != baseline:
+                    raise RuntimeError("Network rules, routes or physical DNS were not preserved")
+
+            connected()
+            if cli(users[1], "--disconnect").get("code") != "notOwner":
+                raise RuntimeError("Another UID disconnected the owner's tunnel")
+            for source, destination in [("172.19.0.1", "10.231.90.2"), ("fdfe:dcba:9876::1", "fd24:4d4f:5448::2")]:
+                host = f"[{destination}]" if ":" in destination else destination
+                response = run("curl", "--fail", "--silent", "--noproxy", "*", "--interface", source, "--max-time", "10", "--output", "/dev/null", "--write-out", "%{http_code}", f"http://{host}:18080/actual-tun")
+                if response.stdout != b"204":
+                    raise RuntimeError("Real TUN TCP fixture failed")
+                family = socket.AF_INET6 if ipaddress.ip_address(source).version == 6 else socket.AF_INET
+                with socket.socket(family, socket.SOCK_DGRAM) as udp:
+                    udp.settimeout(10)
+                    udp.bind((source, 0))
+                    payload = secrets.token_bytes(32)
+                    udp.sendto(payload, (destination, 18081))
+                    if udp.recv(2048) != payload:
+                        raise RuntimeError("Real TUN UDP fixture failed")
+            answers = run("dig", "@172.19.0.2", "example.com", "+short", "+tries=1", "+time=8").stdout.splitlines()
+            if not answers or not any(ipaddress.ip_address(answer.decode()).version == 4 for answer in answers):
+                raise RuntimeError("Private TUN DNS returned no address")
+            run("resolvectl", "query", "example.com")
+            cli(users[0], "--disconnect")
+            restored()
+            connected()
+            main_pid = run("systemctl", "show", "moth-desktop.service", "--property=MainPID", "--value").stdout.strip()
+            engine_pid = run("pgrep", "-P", main_pid.decode(), "-x", "xray").stdout.strip()
+            run("kill", "-KILL", engine_pid.decode())
+            wait(lambda: cli(users[0], "--tunnel-status").get("phase") == "failed", "Engine death was not reported")
+            restored()
+            connected()
+            run("systemctl", "kill", "--kill-whom=main", "--signal=SIGKILL", "moth-desktop.service")
+            wait(lambda: run("systemctl", "show", "moth-desktop.service", "--property=MainPID", "--value").stdout.strip() not in (b"0", main_pid) and cli(users[0], "--status")["systemTunnel"], "Daemon did not restart after SIGKILL")
+            restored()
+            connected()
+            cli(users[0], "--disconnect")
+            restored()
+            run("systemctl", "stop", "moth-desktop.service")
+            restored()
+            print("Linux real UID IPC, HTTPS/DNS, TCP/UDP IPv4/IPv6 TUN, engine death, SIGKILL/restart, reconnect and network restoration passed.")
+        except Exception:
+            # The daemon logs only typed public failures, never profile/config input.
+            diagnostic = run("journalctl", "-u", "moth-desktop.service", "--no-pager", "-n", "50", check=False)
+            sys.stderr.write(diagnostic.stdout.decode(errors="replace"))
+            raise
+        finally:
+            run("systemctl", "stop", "moth-desktop.service", check=False)
+            for child in children:
+                child.kill()
+                child.wait(timeout=10)
+            if unit.exists():
+                unit.unlink()
+                run("systemctl", "daemon-reload", check=False)
+            # The directory was created by this test after an explicit absence check.
+            if root.exists():
+                shutil.rmtree(root)
+            if veth:
+                run("ip", "link", "delete", "moth-ci-host", check=False)
+            if namespace:
+                run("ip", "netns", "delete", "moth-ci-sink", check=False)
+            for user, uid in created_users:
+                run("systemctl", "stop", f"user-runtime-dir@{uid}.service", check=False)
+                run("userdel", "--remove", user, check=False)
+
+
+if __name__ == "__main__":
+    if len(sys.argv) == 2 and sys.argv[1] == "sink":
+        sink()
+    else:
+        main()

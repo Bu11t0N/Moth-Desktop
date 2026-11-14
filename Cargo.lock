@@ -2285,6 +2285,7 @@ dependencies = [
 name = "moth-engine"
 version = "0.3.3"
 dependencies = [
+ "libc",
  "moth-core",
  "reqwest 0.12.28",
  "serde",
@@ -2329,6 +2330,7 @@ dependencies = [
 name = "moth-service"
 version = "0.3.3"
 dependencies = [
+ "libc",
  "moth-core",
  "moth-engine",
  "moth-ipc",

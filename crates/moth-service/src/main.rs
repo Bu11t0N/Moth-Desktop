@@ -1,8 +1,12 @@
+#[cfg(any(windows, target_os = "linux"))]
+mod control;
+#[cfg(target_os = "linux")]
+mod linux;
 #[cfg(windows)]
 mod scm;
 #[cfg(windows)]
 mod server;
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 mod tunnel;
 
 #[cfg(windows)]
@@ -103,7 +107,14 @@ fn main() {
         std::process::exit(1);
     }
 }
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
+fn main() {
+    if let Err(error) = linux::main() {
+        eprintln!("{error}");
+        std::process::exit(1);
+    }
+}
+#[cfg(not(any(windows, target_os = "linux")))]
 fn main() {
     eprintln!("Moth system service is not implemented on this platform");
     std::process::exit(2);

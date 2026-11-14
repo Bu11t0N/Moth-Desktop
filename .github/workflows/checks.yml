@@ -95,5 +95,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: node scripts/fetch-engines.mjs
       - name: Secret Service acceptance dependencies
-        run: sudo apt-get update && sudo apt-get install -y gnome-keyring dbus-x11
+        run: sudo apt-get update && sudo apt-get install -y gnome-keyring dbus-x11 dnsutils
       - run: bash scripts/test-linux-core.sh
+      - run: cargo clippy -p moth-core -p moth-platform -p moth-engine -p moth-ipc -p moth-service --all-targets --locked -- -D warnings
+      - run: cargo build -p moth-service --locked
+      - name: Real Linux daemon, UID ownership, TUN and crash restoration
+        run: sudo --preserve-env=GITHUB_ACTIONS,RUNNER_OS python3 scripts/test-linux-service.py

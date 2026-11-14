@@ -4,6 +4,10 @@ mod job;
 mod tunnel;
 #[cfg(windows)]
 pub use tunnel::Tunnel;
+#[cfg(target_os = "linux")]
+mod linux_tunnel;
+#[cfg(target_os = "linux")]
+pub use linux_tunnel::{recover_network, Tunnel};
 #[cfg(test)]
 mod tests;
 use job::ProcessJob;
@@ -198,6 +202,23 @@ impl EngineSet {
         }
         #[cfg(windows)]
         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW; no console flashes.
+        #[cfg(target_os = "linux")]
+        {
+            // SAFETY: only async-signal-safe syscalls between fork and exec.
+            // Check the original parent too, closing the death-before-prctl race.
+            let parent = unsafe { libc::getpid() };
+            unsafe {
+                cmd.pre_exec(move || {
+                    if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) != 0 {
+                        return Err(std::io::Error::last_os_error());
+                    }
+                    if libc::getppid() != parent {
+                        return Err(std::io::Error::other("Engine parent exited"));
+                    }
+                    Ok(())
+                });
+            }
+        }
         let mut child = cmd.spawn().map_err(|_| EngineError::Process)?;
         let job = match ProcessJob::attach(&child) {
             Ok(j) => j,
