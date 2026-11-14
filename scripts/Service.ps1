@@ -19,13 +19,18 @@ $expectedVersion = '0.3.3'
 trap {
     # The graphical installer uses a protected temporary payload directory.
     # Keep a bounded, credential-free reason there when its silent run fails.
-    if ($InstallDesktop -and $PackageDirectory -and (Test-Path -LiteralPath $PackageDirectory -PathType Container)) {
-        $item = Get-Item -LiteralPath $PackageDirectory -Force
-        if (-not ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
-            $_.Exception.Message.Substring(0,[Math]::Min(2048,$_.Exception.Message.Length)) | Set-Content -LiteralPath (Join-Path $PackageDirectory 'maintenance-error.txt') -Encoding UTF8
+    $failure = $_
+    try {
+        if ($InstallDesktop -and $PackageDirectory -and (Test-Path -LiteralPath $PackageDirectory -PathType Container)) {
+            $item = Get-Item -LiteralPath $PackageDirectory -Force
+            if ($item.Parent.FullName -ieq $env:ProgramFiles -and $item.Name.EndsWith('.moth-payload') -and -not ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+                $bytes = [Text.Encoding]::UTF8.GetBytes($failure.Exception.Message.Substring(0,[Math]::Min(2048,$failure.Exception.Message.Length)))
+                $log = [IO.File]::Open((Join-Path $PackageDirectory 'maintenance-error.txt'),[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+                try { $log.Write($bytes,0,$bytes.Length) } finally { $log.Dispose() }
+            }
         }
-    }
-    throw
+    } catch { } # Never overwrite a pre-existing diagnostic file or hide the real failure.
+    throw $failure
 }
 function Assert-PlainTree([string]$Path) {
     if (-not (Test-Path -LiteralPath $Path)) { return }

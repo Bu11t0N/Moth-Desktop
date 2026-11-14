@@ -1,3 +1,4 @@
+Target x86-unicode
 Unicode true
 !include "MUI2.nsh"
 !include "LogicLib.nsh"
@@ -55,8 +56,15 @@ Section "Moth Desktop" SEC_MAIN
   IfErrors failed
   Delete "$PackageDir"
   StrCpy $PackageDir "$PackageDir.moth-payload"
-  CreateDirectory "$PackageDir"
-  IfErrors failed
+  ; Set owner and DACL AT creation: an elevated user's SID must not become
+  ; owner of executable staging that its unelevated token could later rewrite.
+  System::Call 'advapi32::ConvertStringSecurityDescriptorToSecurityDescriptorW(w "O:BAG:BAD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)", i 1, *p .r0, p 0) i .r1'
+  StrCmp $1 0 failed
+  System::Call '*(i 12, p r0, i 0) p .r2'
+  System::Call 'kernel32::CreateDirectoryW(w "$PackageDir", p r2) i .r1'
+  System::Free $2
+  System::Call 'kernel32::LocalFree(p r0)'
+  StrCmp $1 0 failed
   SetOutPath "$PackageDir"
   File /r "${PAYLOAD}\*"
   WriteUninstaller "$PackageDir\Uninstall.exe"
