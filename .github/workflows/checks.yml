@@ -7,6 +7,8 @@ permissions:
 jobs:
   windows:
     runs-on: windows-latest
+    outputs:
+      version: ${{ steps.package.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -53,6 +55,35 @@ jobs:
         with:
           name: Moth-${{ steps.package.outputs.version }}-windows-x64
           path: target/artifacts/*.zip
+  windows-installer:
+    needs: windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: Moth-${{ needs.windows.outputs.version }}-windows-x64
+          path: target/download
+      - name: Install pinned NSIS compiler
+        run: choco install nsis --version=3.11 --yes --no-progress --allow-downgrade
+      - name: Build graphical Windows installer
+        shell: pwsh
+        run: |
+          $zip=Get-ChildItem target/download/*.zip
+          if (@($zip).Count -ne 1) { throw 'Exactly one portable package required.' }
+          Expand-Archive -LiteralPath $zip.FullName -DestinationPath target/installer-package
+          ./scripts/build-installer-windows.ps1 -PackageDirectory target/installer-package -OutputDirectory target/installers
+      - name: Actual NSIS install, legacy upgrades, rollback, retry and uninstall
+        shell: pwsh
+        run: |
+          ./scripts/fetch-upgrade-baselines.ps1
+          ./scripts/test-installer-windows.ps1 -Installer target/installers/Moth-${{ needs.windows.outputs.version }}-windows-x64-setup.exe -PackageDirectory target/installer-package -Baseline031Directory target/upgrade-baselines/Moth-0.3.1-windows-x64 -Baseline032Directory target/upgrade-baselines/Moth-0.3.2-windows-x64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Moth-${{ needs.windows.outputs.version }}-windows-x64-installer
+          path: |
+            target/installers/*-setup.exe
+            target/installers/*-setup.exe.sha256
   linux-core:
     runs-on: ubuntu-24.04
     steps:

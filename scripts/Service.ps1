@@ -1,7 +1,8 @@
 #requires -Version 5.1
 param(
     [ValidateSet('Install','Remove','Status')][string]$Action = 'Status',
-    [string]$PackageDirectory = ''
+    [string]$PackageDirectory = '',
+    [switch]$InstallDesktop
 )
 $ErrorActionPreference = 'Stop'
 $serviceName = 'MothDesktopService'
@@ -46,6 +47,31 @@ function Start-Moth {
     Start-Service -Name $serviceName
     (Get-Service -Name $serviceName).WaitForStatus('Running',[TimeSpan]::FromSeconds(20))
 }
+function Assert-DesktopClosed {
+    foreach ($process in Get-Process -Name moth-desktop -ErrorAction SilentlyContinue) {
+        if ($process.Path -and [IO.Path]::GetFullPath($process.Path) -ieq (Join-Path $installRoot 'moth-desktop.exe')) {
+            throw 'Exit Moth Desktop from its tray menu before installing or removing it.'
+        }
+    }
+}
+function Read-Payload([string]$Directory, [string]$Name) {
+    $manifestPath = Join-Path $Directory $Name
+    if ((Get-Item -LiteralPath $manifestPath).Length -gt 262144) { throw 'Package manifest is too large.' }
+    $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    if ($manifest.version -ne $expectedVersion -or @($manifest.files).Count -gt 256) { throw 'Invalid desktop package manifest.' }
+    $seen = @{}
+    foreach ($entry in $manifest.files) {
+        $relative = [string]$entry.path
+        # Fixed executable names and notice files only; no arbitrary destination paths.
+        if ($relative -notmatch '^(moth-desktop\.exe|moth-service\.exe|Service\.ps1|Uninstall\.exe|README\.txt|engines/(xray|sing-box)\.exe|notices/[A-Za-z0-9_./-]+)$' -or
+            $relative.Contains('..') -or $entry.sha256 -notmatch '^[a-f0-9]{64}$' -or $seen.ContainsKey($relative)) { throw 'Invalid desktop package entry.' }
+        $seen[$relative] = $true
+    }
+    foreach ($required in @('moth-desktop.exe','moth-service.exe','Service.ps1','engines/xray.exe','engines/sing-box.exe')) {
+        if (-not $seen.ContainsKey($required)) { throw 'Desktop package is incomplete.' }
+    }
+    return $manifest
+}
 if ($Action -eq 'Status') {
     Get-Service -Name $serviceName -ErrorAction SilentlyContinue
     return
@@ -53,6 +79,7 @@ if ($Action -eq 'Status') {
 $principal = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Run this explicit installation/removal action in an elevated PowerShell window.' }
 Assert-PlainTree $installRoot
+if ($InstallDesktop) { Assert-DesktopClosed }
 $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
 $serviceExe = Join-Path $installRoot 'moth-service.exe'
 if ($service) {
@@ -60,17 +87,43 @@ if ($service) {
     if ($configuration.PathName -cne ('"' + $serviceExe + '" --service') -or $configuration.StartName -ne 'LocalSystem') { throw 'Unexpected service configuration; installation was not changed.' }
 }
 if ($Action -eq 'Remove') {
+    $installed = $null
+    if ($InstallDesktop) { $installed = Read-Payload $installRoot 'installed-files.json' }
     Stop-Moth
     if ($service) {
         & "$env:SystemRoot\System32\sc.exe" delete $serviceName | Out-Null
         if ($LASTEXITCODE -ne 0) { throw 'Service deletion failed' }
     }
-    Write-Output 'Service removed. Installation files and user profiles were preserved; Install can reuse this directory.'
+    if ($installed) {
+        # Remove only unchanged files recorded by this installer. Unknown/modified files stay.
+        foreach ($entry in $installed.files) {
+            $path = Join-Path $installRoot $entry.path
+            if ((Test-Path -LiteralPath $path -PathType Leaf) -and (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() -eq $entry.sha256) {
+                Remove-Item -LiteralPath $path
+            }
+        }
+        Remove-Item -LiteralPath (Join-Path $installRoot 'installed-files.json')
+        foreach ($directory in Get-ChildItem -LiteralPath $installRoot -Directory -Recurse | Sort-Object { $_.FullName.Length } -Descending) {
+            if (-not (Get-ChildItem -LiteralPath $directory.FullName -Force)) { Remove-Item -LiteralPath $directory.FullName }
+        }
+        if (-not (Get-ChildItem -LiteralPath $installRoot -Force)) { Remove-Item -LiteralPath $installRoot }
+        Write-Output 'Application and service removed. User profiles, modified files and previous installation backups were preserved.'
+    } else { Write-Output 'Service removed. Installation files and user profiles were preserved; Install can reuse this directory.' }
     return
 }
 if (-not $PackageDirectory) { throw 'Specify the fully extracted package directory.' }
 $package = (Resolve-Path -LiteralPath $PackageDirectory).Path
 Assert-PlainTree $package
+$desktopPayload = $null
+if ($InstallDesktop) {
+    $desktopPayload = Read-Payload $package 'desktop-package.json'
+    foreach ($entry in $desktopPayload.files) {
+        if ((Get-FileHash -LiteralPath (Join-Path $package $entry.path) -Algorithm SHA256).Hash.ToLowerInvariant() -ne $entry.sha256) { throw 'Desktop package checksum mismatch.' }
+    }
+    if (-not (Test-Path -LiteralPath (Join-Path $package 'Uninstall.exe') -PathType Leaf)) { throw 'Desktop uninstaller missing.' }
+} elseif (Test-Path -LiteralPath (Join-Path $installRoot 'installed-files.json')) {
+    throw 'Use the graphical installer to update an installed desktop application.'
+}
 $client = Join-Path $package 'moth-service.exe'
 $hashes = @{
     'engines\xray.exe' = 'c77a00eb84fb93ae044c2d771a1cabcc033b81e487253fbc35b12df6879c1e15'
@@ -115,6 +168,18 @@ try {
     }
     if ((Get-FileHash -LiteralPath (Join-Path $stage 'moth-service.exe')).Hash -ne (Get-FileHash -LiteralPath $client).Hash) { throw 'Staged service checksum mismatch.' }
     if (Test-Path -LiteralPath (Join-Path $package 'notices')) { Copy-Item -LiteralPath (Join-Path $package 'notices') -Destination $stage -Recurse }
+    if ($desktopPayload) {
+        foreach ($entry in $desktopPayload.files) {
+            $destination = Join-Path $stage $entry.path
+            New-Item -ItemType Directory -Path (Split-Path $destination) -Force | Out-Null
+            Copy-Item -LiteralPath (Join-Path $package $entry.path) -Destination $destination -Force
+            if ((Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $entry.sha256) { throw 'Staged desktop checksum mismatch.' }
+        }
+        Copy-Item -LiteralPath (Join-Path $package 'Uninstall.exe') -Destination $stage -Force
+        $uninstallerHash = (Get-FileHash -LiteralPath (Join-Path $stage 'Uninstall.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
+        $files = @($desktopPayload.files | Where-Object { $_.path -ne 'Uninstall.exe' }) + @(@{path='Uninstall.exe';sha256=$uninstallerHash})
+        @{version=$expectedVersion;files=$files} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $stage 'installed-files.json') -Encoding UTF8
+    }
     & "$env:SystemRoot\System32\icacls.exe" $stage /setowner '*S-1-5-32-544' /T /C | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'Could not set installation ownership.' }
     $stopping = $true

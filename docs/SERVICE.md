@@ -5,6 +5,18 @@ The service owns the connection, independently of the GUI window. No connection 
 
 ## Installation
 
+### Graphical installer candidate
+
+The NSIS development installer requests elevation once, installs the GUI, LocalSystem service and pinned cores together in the fixed protected Program Files directory, creates all-user Start/Desktop shortcuts and a Windows uninstall entry. It does not launch an elevated GUI. Start the application from its shortcut after installation; ordinary use requires no elevation. Disconnect VPN and choose tray Exit before upgrading/removing. A running installed GUI or active service tunnel blocks replacement. Windows account-bound profiles remain in the same per-user DPAPI location, including profiles created by portable 0.3.1/0.3.2; the administrator installer never decrypts or copies them.
+
+Use the Windows uninstall entry to remove a graphical installation. It stops/unregisters the service and removes only unchanged files recorded in the installation manifest. Per-user data, unknown/modified files and previous installation backups are preserved. The manual service bootstrap refuses to replace a graphical installation with a service-only payload. An administrator who changes/removes the protected maintenance script or manifest may need to repair using the installer before uninstalling.
+
+The graphical installer uses the same staging/health/rollback transaction described below, expanded to GUI and uninstaller files. It is not an automatic updater. SHA-256 integrity checks do not replace publisher authentication; Authenticode and signed in-app updates remain pending. A WebView2 runtime is currently a prerequisite for the GUI.
+
+Reproducible build: create a sanitized portable package using `build-windows.ps1` and `package-windows.ps1`, then call `build-installer-windows.ps1 -PackageDirectory <extracted-package> -OutputDirectory <new-output>` with NSIS 3.11. `test-installer-windows.ps1` executes the resulting installer/uninstaller in a disposable Windows VM, including both legacy upgrades, forced final-health rollback of running/stopped installations, retry, shortcuts and DPAPI/unknown-file retention. Fault injection happens only in a separate test-source build. See STATUS.md for actual acceptance results.
+
+### Portable package and manual service bootstrap
+
 Extract the whole Windows package and run Install-Service.cmd. The bootstrap requests Windows UAC and calls Service.ps1 using the built-in Windows PowerShell 5.1.
 It creates a protected fixed installation at %ProgramFiles%/Moth Desktop, copies only the service and two pinned cores (plus notices), validates ACLs, registers an automatic-start own-process LocalSystem service and verifies its health. Installation alone does not start a VPN.
 For an existing 0.3.1/0.3.2/0.3.3 service, disconnect VPN first, extract the new package separately and run its Install-Service.cmd. Do not overwrite a running GUI or delete the installation directory. Close the old GUI using tray Exit, then open the new GUI after installation.

@@ -1,4 +1,4 @@
-# Status — 2026-11-14
+# Status — 2026-11-15
 
 Version 0.3.3 candidate: service/core diagnostics, plain interface text and staged manual service upgrades.
 Publication remains gated on target-platform acceptance; the checks below distinguish passed tests from unresolved checks.
@@ -29,6 +29,9 @@ Publication remains gated on target-platform acceptance; the checks below distin
 
 ## 0.3.3 verification and publication gate
 
+- Graphical Windows NSIS packaging is implemented as a development candidate: one protected staging transaction for GUI/service/pinned cores, all-user shortcuts and uninstall registration. The GUI runs without elevation. Uninstall preserves per-user profiles, modified/unknown files and previous installation backups. Existing manual service-only installation remains supported; graphical installations require the graphical installer for further updates. Actual installer acceptance is pending; do not substitute the previous manual-service acceptance for it.
+- Expanded release work remains pending: functioning Linux daemon/storage/IPC/TUN and `.deb`, signed in-app updates on both platforms, coordinated maintenance and actual two-build update/rollback acceptance, signed release metadata and installer publication. Ubuntu 24.04 with systemd-resolved and Secret Service is the initial Linux target; other distributions require separate acceptance.
+
 - Fresh implementation f62da4c: [Windows and Linux CI passed](https://github.com/Bu11t0N/Moth-Desktop/actions/runs/43505351323). Windows runner: Windows Server 2025; Linux runner: Ubuntu 24.04. These are fresh candidate results, not substituted 0.3.2 evidence.
 - Rust workspace tests, fmt, Clippy with warnings denied, TypeScript/Vite and ten Playwright scenarios pass. The UI scenarios include service loss after successful health and rejection of a delayed old health response. Health diagnostics do not replace service-owned tunnel state.
 - Full Linux common-crate/engine/service tests, including the pinned-engine checks, pass. Local cross-compilation also passes for moth-core, moth-platform and moth-ipc on x86_64-unknown-linux-gnu.
@@ -37,7 +40,7 @@ Publication remains gated on target-platform acceptance; the checks below distin
 - Windows CI: standard-user authentication and real service-backed HTTPS/DNS, SID isolation, reconnect, engine crash and service shutdown pass. Native GUI under the standard user passes tray registration, real close-to-tray with live VPN, second-instance reopen and confirmed Exit disconnection. Explicit debug storage is resolved before querying shell folders for a newly created test account; release storage remains Windows account-bound.
 - Release EXEs are built with compiler-path remapping and stripped debug data. Packaging checks component versions/core pins and produces SHA256SUMS. No system-network tests are run on a normal workstation.
 - Separate Windows 10 VM observations remain unresolved: the service HTTPS fixture failed for both candidate 0.3.3 and baseline 0.3.2; a local TUN fixture reached IPv4 and failed IPv6 with HostUnreachable. This is neither proof of a 0.3.3 regression nor passing acceptance on that VM.
-- **Publication gate remains open:** target Windows 11 acceptance has not been performed. Successful Windows Server CI does not replace a separate isolated Windows 11 test system. R0 remains partial: stage-specific failures, redacted diagnostic journal/export, tray Connect, signed automatic updates and power-loss recovery are pending.
+- **Publication gate remains open:** the expanded installer/Linux/updater scope has not passed acceptance. A separate Windows 11 check is not a release requirement; it has not been performed and is not claimed. R0 remains partial: stage-specific failures, redacted diagnostic journal/export, tray Connect, signed automatic updates and power-loss recovery are pending.
 
 ## 0.3.2 verification
 
