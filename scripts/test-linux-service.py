@@ -4,6 +4,7 @@ import http.server
 import ipaddress
 import json
 import os
+import pwd
 from pathlib import Path
 import secrets
 import shutil
@@ -47,7 +48,14 @@ def sink():
 
 
 def run(*args, data=None, check=True, timeout=40):
-    result = subprocess.run(args, input=data, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
+    # Some account/service tools start descendants inheriting output handles.
+    # Wait for the actual command, not EOF on a pipe held by a daemon.
+    with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr:
+        result = subprocess.run(args, input=data, stdout=stdout, stderr=stderr, timeout=timeout)
+        stdout.seek(0)
+        stderr.seek(0)
+        result.stdout = stdout.read(1024 * 1024)
+        result.stderr = stderr.read(1024 * 1024)
     if check and result.returncode:
         # Request/config contents and stderr are deliberately not included.
         raise RuntimeError(f"Command failed: {args[0]} ({result.returncode})")
@@ -107,8 +115,16 @@ def main():
             for user, uid in zip(users, (23101, 23102)):
                 if run("id", user, check=False).returncode == 0 or run("getent", "passwd", str(uid), check=False).returncode == 0:
                     raise RuntimeError("Acceptance account already exists")
-                run("useradd", "--uid", str(uid), "--user-group", "--create-home", "--shell", "/usr/sbin/nologin", user)
+                home = Path("/home") / user
+                if home.exists():
+                    raise RuntimeError("Acceptance home already exists")
+                run("useradd", "--uid", str(uid), "--user-group", "--no-create-home", "--home-dir", str(home), "--shell", "/usr/sbin/nologin", user)
                 created_users.append((user, uid))
+                account = pwd.getpwnam(user)
+                if account.pw_uid != uid:
+                    raise RuntimeError("Acceptance account has the wrong UID")
+                home.mkdir(mode=0o700)
+                os.chown(home, uid, account.pw_gid)
                 run("systemctl", "start", f"user-runtime-dir@{uid}.service")
             run("ip", "netns", "add", "moth-ci-sink")
             namespace = True
