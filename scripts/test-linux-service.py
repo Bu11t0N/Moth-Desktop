@@ -125,7 +125,11 @@ def main():
                     raise RuntimeError("Acceptance account has the wrong UID")
                 home.mkdir(mode=0o700)
                 os.chown(home, uid, account.pw_gid)
-                run("systemctl", "start", f"user-runtime-dir@{uid}.service")
+                # Keep a real user manager across short runuser/PAM sessions,
+                # like the persistent runtime of a logged-in desktop account.
+                run("loginctl", "enable-linger", user)
+                run("systemctl", "start", f"user@{uid}.service")
+                wait(lambda: Path(f"/run/user/{uid}").is_dir(), "User manager runtime was not created")
             run("ip", "netns", "add", "moth-ci-sink")
             namespace = True
             run("ip", "link", "add", "moth-ci-host", "type", "veth", "peer", "name", "moth-ci-peer")
@@ -274,6 +278,8 @@ def main():
             if namespace:
                 run("ip", "netns", "delete", "moth-ci-sink", check=False)
             for user, uid in created_users:
+                run("loginctl", "disable-linger", user, check=False)
+                run("systemctl", "stop", f"user@{uid}.service", check=False)
                 run("systemctl", "stop", f"user-runtime-dir@{uid}.service", check=False)
                 run("pkill", "-u", str(uid), check=False)
                 run("userdel", "--remove", user, check=False)

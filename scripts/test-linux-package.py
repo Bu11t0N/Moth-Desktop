@@ -37,7 +37,8 @@ def main():
         account = pwd.getpwnam(user)
         home.mkdir(mode=0o700)
         os.chown(home, account.pw_uid, account.pw_gid)
-        run("systemctl", "start", f"user-runtime-dir@{account.pw_uid}.service")
+        run("loginctl", "enable-linger", user)
+        run("systemctl", "start", f"user@{account.pw_uid}.service")
         fixture = home / "storage-acceptance"
         shutil.copyfile(repo / "target/debug/examples/storage_acceptance", fixture)
         fixture.chmod(0o755)
@@ -93,6 +94,8 @@ def main():
         run("systemctl", "stop", "moth-desktop.service", check=False)
         if created:
             account = pwd.getpwnam(user)
+            run("loginctl", "disable-linger", user, check=False)
+            run("systemctl", "stop", f"user@{account.pw_uid}.service", check=False)
             run("systemctl", "stop", f"user-runtime-dir@{account.pw_uid}.service", check=False)
             run("pkill", "-u", str(account.pw_uid), check=False)
             run("userdel", "--remove", user, check=False)
