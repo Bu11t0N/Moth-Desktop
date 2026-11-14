@@ -27,8 +27,6 @@
   },
   "bundle": {
     "resources": {
-      "../.local/engines/win32-x64/xray.exe": "engines/xray.exe",
-      "../.local/engines/win32-x64/sing-box.exe": "engines/sing-box.exe",
       "../engines.lock.json": "notices/engines.lock.json",
       "../THIRD_PARTY.md": "notices/THIRD_PARTY.md",
       "../LICENSE": "notices/LICENSE",

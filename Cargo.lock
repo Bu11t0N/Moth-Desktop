@@ -2279,6 +2279,7 @@ dependencies = [
  "tauri-plugin-single-instance",
  "tokio",
  "uuid",
+ "zbus",
 ]
 
 [[package]]

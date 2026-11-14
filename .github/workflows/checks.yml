@@ -97,9 +97,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: node scripts/fetch-engines.mjs
       - name: Secret Service acceptance dependencies
-        run: sudo apt-get update && sudo apt-get install -y gnome-keyring dbus-x11 dnsutils
+        run: sudo apt-get update && sudo apt-get install -y gnome-keyring dbus-x11 dnsutils libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf xvfb xfwm4 xfce4-panel
       - run: bash scripts/test-linux-core.sh
       - run: cargo clippy -p moth-core -p moth-platform -p moth-engine -p moth-ipc -p moth-service --all-targets --locked -- -D warnings
       - run: cargo build -p moth-service --locked
+      - run: npm ci
+      - name: Build actual GTK and WebKit native acceptance GUI
+        run: npm run desktop:build -- --debug --no-bundle
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Real Linux daemon, UID ownership, TUN and crash restoration
         run: sudo --preserve-env=GITHUB_ACTIONS,RUNNER_OS python3 scripts/test-linux-service.py

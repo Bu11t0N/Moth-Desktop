@@ -22,7 +22,7 @@ test("preview never claims protection; navigation and import failure are honest"
   await expect(
     page
       .getByRole("alert")
-      .filter({ hasText: "Импорт доступен в приложении Windows" }),
+      .filter({ hasText: "Импорт доступен в настольном приложении" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Отмена", exact: true }).click();
   await page.getByRole("button", { name: "Настройки", exact: true }).click();

@@ -199,6 +199,31 @@ def main():
             connected()
             cli(users[0], "--disconnect")
             restored()
+            # Actual GTK/WebKit windows under an ordinary user, with a real XFCE
+            # tray host and separately without any tray host. No fake IPC state.
+            gui = root / "moth-desktop"
+            shutil.copyfile(repo / "target/debug/moth-desktop", gui)
+            gui.chmod(0o755)
+            native_script = root / "test-native-linux.sh"
+            shutil.copyfile(repo / "scripts/test-native-linux.sh", native_script)
+            native_script.chmod(0o755)
+            for mode in ("tray", "taskbar"):
+                evidence = Path("/home") / users[0] / ("native-" + mode)
+                evidence.mkdir(mode=0o700)
+                os.chown(evidence, 23101, 23101)
+                profile_file = evidence / "fixture-profile"
+                profile_file.write_bytes(profile)
+                profile_file.chmod(0o600)
+                os.chown(profile_file, 23101, 23101)
+                try:
+                    run("runuser", "-u", users[0], "--", "env", "GITHUB_ACTIONS=true", "RUNNER_OS=Linux", "XDG_RUNTIME_DIR=/run/user/23101", "dbus-run-session", "--", "xvfb-run", "-a", "bash", str(native_script), str(profile_file), str(evidence), mode, timeout=120)
+                except Exception:
+                    for name in ("gui.log", "panel.log", "window-manager.log", "native-tray-result.json"):
+                        path = evidence / name
+                        if path.exists():
+                            sys.stderr.write(path.read_text(errors="replace")[-3000:])
+                    raise
+                restored()
             run("systemctl", "stop", "moth-desktop.service")
             restored()
             print("Linux real UID IPC, HTTPS/DNS, TCP/UDP IPv4/IPv6 TUN, engine death, SIGKILL/restart, reconnect and network restoration passed.")

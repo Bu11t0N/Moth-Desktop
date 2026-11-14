@@ -46,7 +46,7 @@ export async function call(
   if (!native) {
     if (command === "get_snapshot") return structuredClone(empty);
     throw new Error(
-      "Импорт доступен в приложении Windows. В браузере открыт только просмотр интерфейса.",
+      "Импорт доступен в настольном приложении. В браузере открыт только просмотр интерфейса.",
     );
   }
   return invoke<Snapshot>(command, args);
@@ -78,6 +78,10 @@ export async function tunnel(
   command: "tunnel_status" | "connect_vpn" | "disconnect_vpn",
   id?: string,
 ): Promise<TunnelState> {
-  if (!native) throw new Error("VPN доступен в настольном приложении Windows.");
+  if (!native) throw new Error("VPN доступен в настольном приложении.");
   return invoke<TunnelState>(command, id ? { id } : undefined);
+}
+export async function exitApp(): Promise<void> {
+  if (!native) throw new Error("Выход доступен в настольном приложении.");
+  return invoke<void>("quit_app");
 }

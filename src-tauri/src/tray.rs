@@ -1,4 +1,4 @@
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 use moth_ipc::Reply;
 use moth_ipc::{Command, IpcError, TunnelPhase, TunnelState};
 use std::{
@@ -17,7 +17,9 @@ pub struct DesktopLifecycle {
     pub controls: RwLock<()>,
     pub busy: AtomicBool,
     pub(super) allow_exit: AtomicBool,
-    tray: TrayIcon,
+    tray: Option<TrayIcon>,
+    #[cfg(target_os = "linux")]
+    pub(super) tray_available: AtomicBool,
     status: MenuItem<tauri::Wry>,
     disconnect: MenuItem<tauri::Wry>,
     quit: MenuItem<tauri::Wry>,
@@ -32,9 +34,9 @@ pub fn show_main(app: &AppHandle) {
 }
 
 async fn service_call(command: Command) -> Result<TunnelState, IpcError> {
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "linux"))]
     {
-        match moth_ipc::windows::ServiceClient::production()
+        match moth_ipc::ServiceClient::production()
             .call(command)
             .await?
             .result
@@ -43,7 +45,7 @@ async fn service_call(command: Command) -> Result<TunnelState, IpcError> {
             _ => Err(IpcError::Protocol),
         }
     }
-    #[cfg(not(windows))]
+    #[cfg(not(any(windows, target_os = "linux")))]
     {
         drop(command);
         Err(IpcError::Unavailable)
@@ -77,13 +79,9 @@ where
 
 async fn stop_owned() -> Result<(), IpcError> {
     match stop_owned_with(service_call).await {
-        #[cfg(windows)]
-        Err(IpcError::Unavailable)
-            if matches!(moth_ipc::windows::service_is_stopped(), Ok(true)) =>
-        {
-            Ok(())
-        }
-        #[cfg(not(windows))]
+        #[cfg(any(windows, target_os = "linux"))]
+        Err(IpcError::Unavailable) if matches!(moth_ipc::service_is_stopped(), Ok(true)) => Ok(()),
+        #[cfg(not(any(windows, target_os = "linux")))]
         Err(IpcError::Unavailable) => Ok(()), // Linux has no service/tunnel yet.
         result => result,
     }
@@ -110,7 +108,7 @@ pub fn request_action(app: &AppHandle, exit: bool) {
         .await;
         match result {
             Ok(Ok(())) if exit => {
-                #[cfg(all(windows, debug_assertions))]
+                #[cfg(all(any(windows, target_os = "linux"), debug_assertions))]
                 crate::native_acceptance::record_exit();
                 lifecycle.allow_exit.store(true, Ordering::Release);
                 app.exit(0);
@@ -125,11 +123,11 @@ pub fn request_action(app: &AppHandle, exit: bool) {
                 let _ = lifecycle
                     .status
                     .set_text("Не удалось подтвердить отключение VPN");
-                let _ = lifecycle
-                    .tray
-                    .set_tooltip(Some("Мотылёк — ошибка отключения VPN"));
+                if let Some(tray) = &lifecycle.tray {
+                    let _ = tray.set_tooltip(Some("Мотылёк — ошибка отключения VPN"));
+                }
                 show_main(&app);
-                let _=app.emit("moth-tray-error","Не удалось подтвердить отключение VPN. Moth остаётся запущен. Проверь связь со службой и повтори выход через трей.");
+                let _=app.emit("moth-tray-error","Не удалось подтвердить отключение VPN. Moth остаётся запущен. Проверьте связь со службой и повторите выход в приложении или трее.");
             }
         }
     });
@@ -165,9 +163,9 @@ async fn refresh(app: &AppHandle) {
         Err(_) => ("Служба VPN недоступна", false),
     };
     let _ = lifecycle.status.set_text(text);
-    let _ = lifecycle
-        .tray
-        .set_tooltip(Some(format!("Мотылёк — {text}")));
+    if let Some(tray) = &lifecycle.tray {
+        let _ = tray.set_tooltip(Some(format!("Мотылёк — {text}")));
+    }
     let _ = lifecycle.disconnect.set_enabled(can_disconnect);
     let _ = lifecycle.quit.set_enabled(true);
 }
@@ -199,7 +197,7 @@ pub fn setup(app: &tauri::App) -> tauri::Result<()> {
         .default_window_icon()
         .ok_or_else(|| tauri::Error::AssetNotFound("window icon".into()))?
         .clone();
-    let tray = TrayIconBuilder::with_id("moth-tray")
+    let builder = TrayIconBuilder::with_id("moth-tray")
         .icon(icon)
         .tooltip("Мотылёк — проверяем состояние VPN…")
         .menu(&menu)
@@ -216,18 +214,62 @@ pub fn setup(app: &tauri::App) -> tauri::Result<()> {
             ) {
                 show_main(tray.app_handle());
             }
-        })
-        .build(app)?;
+        });
+    #[cfg(target_os = "linux")]
+    let tray = builder.build(app).ok();
+    #[cfg(not(target_os = "linux"))]
+    let tray = Some(builder.build(app)?);
     app.manage(DesktopLifecycle {
         controls: RwLock::new(()),
         busy: AtomicBool::new(false),
         allow_exit: AtomicBool::new(false),
         tray,
+        #[cfg(target_os = "linux")]
+        tray_available: AtomicBool::new(false),
         status,
         disconnect,
         quit,
     });
     let app = app.handle().clone();
+    #[cfg(target_os = "linux")]
+    {
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            loop {
+                let present = tokio::time::timeout(Duration::from_millis(700), async {
+                    let connection = zbus::Connection::session().await.ok()?;
+                    let watcher = zbus::Proxy::new(
+                        &connection,
+                        "org.kde.StatusNotifierWatcher",
+                        "/StatusNotifierWatcher",
+                        "org.kde.StatusNotifierWatcher",
+                    )
+                    .await
+                    .ok()?;
+                    watcher
+                        .get_property::<bool>("IsStatusNotifierHostRegistered")
+                        .await
+                        .ok()
+                })
+                .await
+                .ok()
+                .flatten()
+                .unwrap_or(false);
+                let lifecycle = app.state::<DesktopLifecycle>();
+                let present = present && lifecycle.tray.is_some();
+                let previous = lifecycle.tray_available.swap(present, Ordering::AcqRel);
+                if previous
+                    && !present
+                    && app
+                        .get_webview_window("main")
+                        .is_some_and(|window| window.is_visible().ok() == Some(false))
+                {
+                    show_main(&app);
+                }
+                tokio::time::sleep(Duration::from_secs(2)).await;
+            }
+        });
+    }
     tauri::async_runtime::spawn(async move {
         loop {
             refresh(&app).await;
@@ -239,7 +281,7 @@ pub fn setup(app: &tauri::App) -> tauri::Result<()> {
 
 pub fn run_event(app: &AppHandle, event: tauri::RunEvent) {
     match event {
-        #[cfg(all(windows, debug_assertions))]
+        #[cfg(all(any(windows, target_os = "linux"), debug_assertions))]
         tauri::RunEvent::Ready => crate::native_acceptance::start(app),
         tauri::RunEvent::WindowEvent {
             label,
@@ -248,6 +290,19 @@ pub fn run_event(app: &AppHandle, event: tauri::RunEvent) {
         } if label == "main" => {
             api.prevent_close();
             if let Some(window) = app.get_webview_window("main") {
+                #[cfg(target_os = "linux")]
+                if !app
+                    .state::<DesktopLifecycle>()
+                    .tray_available
+                    .load(Ordering::Acquire)
+                {
+                    // With no real tray host keep a taskbar window. A failed
+                    // minimize must leave it visible rather than losing access.
+                    if window.minimize().is_err() {
+                        let _ = window.show();
+                    }
+                    return;
+                }
                 let _ = window.hide();
             }
         }

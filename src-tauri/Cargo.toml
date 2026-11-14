@@ -18,3 +18,6 @@ moth-ipc = {path="../crates/moth-ipc"}
 tokio = {version="1",features= ["sync", "time"] }
 serde.workspace = true
 uuid.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+zbus = { version = "5", default-features = false, features = ["async-io"] }

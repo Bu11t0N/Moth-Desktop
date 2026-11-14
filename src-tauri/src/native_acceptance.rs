@@ -1,4 +1,4 @@
-//! Debug-only native lifecycle driver for the disposable Windows CI VM.
+//! Debug-only native lifecycle driver for disposable Windows/Linux CI VMs.
 //! No production flag, authentication bypass, fake state or host test routing.
 use std::{io::Read, path::PathBuf, sync::atomic::Ordering, time::Duration};
 use tauri::Manager;
@@ -6,8 +6,11 @@ use tauri::Manager;
 fn enabled() -> bool {
     std::env::var("MOTH_NATIVE_TRAY_TEST").as_deref() == Ok("1")
         && ((std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true")
-            && std::env::var("RUNNER_OS").as_deref() == Ok("Windows"))
-            || std::env::var("MOTH_DISPOSABLE_VM").as_deref() == Ok("1"))
+            && matches!(
+                std::env::var("RUNNER_OS").as_deref(),
+                Ok("Windows" | "Linux")
+            ))
+            || (cfg!(windows) && std::env::var("MOTH_DISPOSABLE_VM").as_deref() == Ok("1")))
 }
 fn output() -> PathBuf {
     PathBuf::from(std::env::var_os("MOTH_DEV_DATA_DIR").expect("isolated test data directory"))
@@ -19,7 +22,9 @@ pub fn record_exit() {
             output().is_file(),
             "native lifecycle assertions must finish before exit"
         );
-        std::fs::write(output(),r#"{"trayRegistered":true,"closeKeptVpn":true,"secondLaunchRestored":true,"exitDisconnected":true}"#).expect("write native evidence");
+        let fallback =
+            cfg!(target_os = "linux") && std::env::var("MOTH_NATIVE_NO_TRAY").as_deref() == Ok("1");
+        std::fs::write(output(),format!("{{\"trayRegistered\":{},\"trayFallback\":{},\"closeKeptVpn\":true,\"secondLaunchRestored\":true,\"exitDisconnected\":true}}",!fallback,fallback)).expect("write native evidence");
     }
 }
 async fn visible(window: &tauri::WebviewWindow, wanted: bool) -> Result<(), &'static str> {
@@ -35,7 +40,22 @@ async fn visible(window: &tauri::WebviewWindow, wanted: bool) -> Result<(), &'st
     .map_err(|_| "window visibility did not settle")
 }
 async fn exercise(app: &tauri::AppHandle) -> Result<(), &'static str> {
-    if app.tray_by_id("moth-tray").is_none() {
+    let fallback =
+        cfg!(target_os = "linux") && std::env::var("MOTH_NATIVE_NO_TRAY").as_deref() == Ok("1");
+    #[cfg(target_os = "linux")]
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while app
+            .state::<super::tray::DesktopLifecycle>()
+            .tray_available
+            .load(Ordering::Acquire)
+            == fallback
+        {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .map_err(|_| "real tray host availability did not match the acceptance session")?;
+    if !fallback && app.tray_by_id("moth-tray").is_none() {
         return Err("native tray not registered");
     }
     let mut link = String::new();
@@ -47,7 +67,12 @@ async fn exercise(app: &tauri::AppHandle) -> Result<(), &'static str> {
     if link.len() > 16384 || profiles.len() != 1 || profiles[0].host != "127.0.0.1" {
         return Err("fixture must be a local-only profile");
     }
-    let snapshot = super::import_servers(link, app.state()).map_err(|_| "native import failed")?;
+    let handle = app.clone();
+    let snapshot =
+        tauri::async_runtime::spawn_blocking(move || super::import_servers(link, handle.state()))
+            .await
+            .map_err(|_| "native import task failed")?
+            .map_err(|_| "native import failed")?;
     let id = snapshot.selected.ok_or("fixture selection missing")?;
     let state = super::connect_vpn(id, app.state(), app.clone())
         .await
@@ -59,7 +84,7 @@ async fn exercise(app: &tauri::AppHandle) -> Result<(), &'static str> {
         .get_webview_window("main")
         .ok_or("native window missing")?;
     window.close().map_err(|_| "native close request failed")?;
-    visible(&window, false).await?;
+    close_state(&window, fallback).await?;
     if app.get_webview_window("main").is_none() {
         return Err("close destroyed webview");
     }
@@ -89,11 +114,29 @@ async fn exercise(app: &tauri::AppHandle) -> Result<(), &'static str> {
     }
     visible(&window, true).await?;
     window.close().map_err(|_| "second close request failed")?;
-    visible(&window, false).await?;
+    close_state(&window, fallback).await?;
     std::fs::write(output(),r#"{"trayRegistered":true,"closeKeptVpn":true,"secondLaunchRestored":true,"exitDisconnected":false}"#).map_err(|_|"native evidence write failed")?;
     // The actual menu handler; graceful exit records evidence only after stop confirmation.
-    super::tray::menu_action(app, "moth-quit");
+    if fallback {
+        super::quit_app(app.clone());
+    } else {
+        super::tray::menu_action(app, "moth-quit");
+    }
     Ok(())
+}
+async fn close_state(window: &tauri::WebviewWindow, fallback: bool) -> Result<(), &'static str> {
+    if fallback {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while window.is_minimized().ok() != Some(true) || window.is_visible().ok() != Some(true)
+            {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        })
+        .await
+        .map_err(|_| "no-tray close did not retain a minimized taskbar window")
+    } else {
+        visible(window, false).await
+    }
 }
 pub fn start(app: &tauri::AppHandle) {
     if !enabled() {

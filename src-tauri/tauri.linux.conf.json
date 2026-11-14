@@ -1,0 +1,9 @@
+{
+  "bundle": {
+    "targets": ["deb"],
+    "resources": {
+      "../.local/engines/linux-x64/xray": "engines/xray",
+      "../.local/engines/linux-x64/sing-box": "engines/sing-box"
+    }
+  }
+}

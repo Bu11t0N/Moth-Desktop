@@ -6,6 +6,10 @@ use zeroize::Zeroizing;
 
 #[cfg(target_os = "linux")]
 pub mod linux;
+#[cfg(target_os = "linux")]
+pub use linux::{service_is_stopped, ServiceClient};
+#[cfg(windows)]
+pub use windows::{service_is_stopped, ServiceClient};
 #[cfg(windows)]
 pub mod windows;
 pub const PROTOCOL_VERSION: u16 = 2;
@@ -111,17 +115,17 @@ pub enum ErrorCode {
 
 #[derive(Debug, thiserror::Error)]
 pub enum IpcError {
-    #[error("Служба Windows не установлена или недоступна")]
+    #[error("Служба VPN не установлена или недоступна")]
     Unavailable,
-    #[error("Не удалось подтвердить подлинность службы Windows")]
+    #[error("Не удалось подтвердить подлинность службы VPN")]
     UntrustedPeer,
-    #[error("Нет доступа к службе Windows")]
+    #[error("Нет доступа к службе VPN")]
     AccessDenied,
-    #[error("Несовместимая версия службы Windows")]
+    #[error("Несовместимая версия службы VPN")]
     VersionMismatch,
-    #[error("Служба Windows не ответила вовремя")]
+    #[error("Служба VPN не ответила вовремя")]
     Timeout,
-    #[error("Некорректный ответ службы Windows")]
+    #[error("Некорректный ответ службы VPN")]
     Protocol,
 }
 

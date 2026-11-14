@@ -5,7 +5,7 @@ use serde::Serialize;
 use std::sync::Mutex;
 use tauri::Manager;
 use uuid::Uuid;
-#[cfg(all(windows, debug_assertions))]
+#[cfg(all(any(windows, target_os = "linux"), debug_assertions))]
 mod native_acceptance;
 mod tray;
 
@@ -98,10 +98,10 @@ async fn probe_server(
             .cloned()
             .ok_or("Сервер не найден")?
     };
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "linux"))]
     {
         let link = moth_core::share_link(&profile).map_err(str::to_owned)?;
-        match moth_ipc::windows::ServiceClient::production()
+        match moth_ipc::ServiceClient::production()
             .call(moth_ipc::Command::Probe { link })
             .await
         {
@@ -135,22 +135,22 @@ async fn probe_server(
 }
 #[tauri::command]
 async fn service_status() -> Result<moth_ipc::Health, String> {
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "linux"))]
     {
-        moth_ipc::windows::ServiceClient::production()
+        moth_ipc::ServiceClient::production()
             .health()
             .await
             .map_err(|e| e.to_string())
     }
-    #[cfg(not(windows))]
+    #[cfg(not(any(windows, target_os = "linux")))]
     {
         Err("Системная служба этой платформы ещё не реализована".into())
     }
 }
 async fn tunnel_call(command: moth_ipc::Command) -> Result<moth_ipc::TunnelState, String> {
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "linux"))]
     {
-        match moth_ipc::windows::ServiceClient::production()
+        match moth_ipc::ServiceClient::production()
             .call(command)
             .await
             .map_err(|e| e.to_string())?
@@ -158,9 +158,7 @@ async fn tunnel_call(command: moth_ipc::Command) -> Result<moth_ipc::TunnelState
         {
             moth_ipc::Reply::Tunnel(state) => Ok(state),
             moth_ipc::Reply::Failure { code } => Err(match code {
-                moth_ipc::ErrorCode::NotOwner => {
-                    "Подключением управляет другая учётная запись Windows"
-                }
+                moth_ipc::ErrorCode::NotOwner => "Подключением управляет другая учётная запись",
                 moth_ipc::ErrorCode::Busy => "Служба уже выполняет действие; дождитесь завершения",
                 moth_ipc::ErrorCode::InvalidProfile => "Служба отклонила параметры сервера",
                 _ => "Не удалось выполнить действие с VPN",
@@ -169,7 +167,7 @@ async fn tunnel_call(command: moth_ipc::Command) -> Result<moth_ipc::TunnelState
             _ => Err("Некорректный ответ службы".into()),
         }
     }
-    #[cfg(not(windows))]
+    #[cfg(not(any(windows, target_os = "linux")))]
     {
         drop(command);
         Err("Системный туннель Linux ещё не реализован".into())
@@ -182,6 +180,10 @@ async fn tunnel_status() -> Result<moth_ipc::TunnelState, String> {
 #[tauri::command]
 async fn disconnect_vpn() -> Result<moth_ipc::TunnelState, String> {
     tunnel_call(moth_ipc::Command::Disconnect {}).await
+}
+#[tauri::command]
+fn quit_app(app: tauri::AppHandle) {
+    tray::request_action(&app, true);
 }
 #[tauri::command]
 async fn connect_vpn(
@@ -248,7 +250,8 @@ fn main() {
             service_status,
             tunnel_status,
             connect_vpn,
-            disconnect_vpn
+            disconnect_vpn,
+            quit_app
         ])
         .build(tauri::generate_context!())
         .expect("Не удалось запустить Moth Desktop")
