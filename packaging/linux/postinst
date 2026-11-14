@@ -1,0 +1,37 @@
+#!/bin/sh
+set -eu
+case "${1:-}" in
+  configure|abort-upgrade|abort-remove|abort-deconfigure)
+    /usr/lib/moth-desktop/moth-service --check-installed
+    expected=$(dpkg-query -W -f='${Version}' moth-desktop)
+    [ "$(/usr/lib/moth-desktop/moth-service --version)" = "$expected" ]
+    [ "$(/usr/bin/moth-desktop --version)" = "$expected" ]
+    systemctl daemon-reload
+    deb-systemd-helper unmask moth-desktop.service >/dev/null
+    if deb-systemd-helper --quiet was-enabled moth-desktop.service; then
+      deb-systemd-helper enable moth-desktop.service >/dev/null
+    fi
+    deb-systemd-helper update-state moth-desktop.service >/dev/null
+    deb-systemd-invoke start moth-desktop.service >/dev/null
+    # A configured package must contain a running, authenticated healthy daemon.
+    # Installation alone never initiates a VPN connection.
+    attempts=0
+    until /usr/lib/moth-desktop/moth-service --status 2>/dev/null | python3 -c '
+import json,sys
+try:
+    health=json.load(sys.stdin)
+    assert health["version"] == sys.argv[1] and health["protocol"] == 2 and health["systemTunnel"]
+    assert len(health["engines"]) == 2 and all(e["available"] for e in health["engines"])
+except Exception:
+    raise SystemExit(1)
+' "$expected"; do
+      attempts=$((attempts + 1))
+      if [ "$attempts" -ge 10 ]; then
+        echo 'Moth service health verification failed. The package remains unconfigured; user profiles were preserved.' >&2
+        exit 1
+      fi
+      sleep 1
+    done
+    ;;
+esac
+exit 0

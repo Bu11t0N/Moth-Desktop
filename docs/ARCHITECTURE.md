@@ -47,8 +47,8 @@ dialog closes. No Debug implementation on credential-bearing models. DPAPI plain
 buffers are cleared where owned by the encryption boundary; full heap zeroization is not
 claimed (models/serialization clones exist).
 
-DPAPI doesn't protect against malware running as the same user. Linux persistence is
-explicitly unsupported pending a Secret Service/keyring design. No silent plaintext fallback.
+DPAPI doesn't protect against malware running as the same user. Other platforms
+require an implemented protected backend; there is no silent plaintext fallback.
 Corruption is a startup error, never an empty library implicitly saved over the original.
 
 Linux foundation in the expanded 0.3.3 candidate uses the desktop Secret Service

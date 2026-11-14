@@ -1,0 +1,31 @@
+#!/bin/sh
+set -eu
+case "${1:-}" in
+  install|upgrade)
+    if [ ! -d /run/systemd/system ]; then
+      echo 'Moth Desktop requires a booted systemd system.' >&2
+      exit 1
+    fi
+    if pgrep -x moth-desktop >/dev/null; then
+      echo 'Exit Moth Desktop before installing or upgrading the package.' >&2
+      exit 1
+    fi
+    if [ -e /run/moth-desktop/network-v1.json ] || [ -e /sys/class/net/moth0 ]; then
+      echo 'Disconnect VPN and complete network recovery before installing Moth Desktop.' >&2
+      exit 1
+    fi
+    if systemctl is-active --quiet moth-desktop.service; then
+      # Execute only the previous root-owned fixed installation, and require an
+      # authenticated status response before stopping/unpacking anything.
+      /usr/lib/moth-desktop/moth-service --check-installed
+      /usr/lib/moth-desktop/moth-service --tunnel-status | python3 -c '
+import json,sys
+state=json.load(sys.stdin)
+if state.get("kind") != "tunnel" or state.get("phase") not in ("disconnected","failed"):
+    raise SystemExit("Disconnect VPN before upgrading Moth Desktop, including connections owned by other users.")
+'
+      systemctl stop moth-desktop.service
+    fi
+    ;;
+esac
+exit 0

@@ -265,6 +265,7 @@ def main():
                 run("ip", "netns", "delete", "moth-ci-sink", check=False)
             for user, uid in created_users:
                 run("systemctl", "stop", f"user-runtime-dir@{uid}.service", check=False)
+                run("pkill", "-u", str(uid), check=False)
                 run("userdel", "--remove", user, check=False)
 
 

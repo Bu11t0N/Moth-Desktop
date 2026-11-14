@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+case "${1:-}" in
+  remove)
+    systemctl daemon-reload
+    deb-systemd-helper mask moth-desktop.service >/dev/null
+    ;;
+  purge)
+    deb-systemd-helper purge moth-desktop.service >/dev/null
+    deb-systemd-helper unmask moth-desktop.service >/dev/null
+    systemctl daemon-reload
+    ;;
+esac
+# Profile secrets belong to the user's Secret Service. Never traverse homes,
+# delete keyring items or remove unknown installation files, even on purge.
+exit 0

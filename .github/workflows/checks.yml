@@ -109,3 +109,20 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Real Linux daemon, UID ownership, TUN and crash restoration
         run: sudo --preserve-env=GITHUB_ACTIONS,RUNNER_OS python3 scripts/test-linux-service.py
+      - name: Build sanitized Linux Debian package
+        id: linux-package
+        run: |
+          artifacts=$(mktemp -d "$RUNNER_TEMP/moth-linux-artifacts-XXXXXXXX")
+          bash scripts/build-linux.sh "$artifacts"
+          echo "directory=$artifacts" >> "$GITHUB_OUTPUT"
+          echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Actual apt install, remove, reinstall and keyring preservation
+        run: |
+          cargo build -p moth-platform --example storage_acceptance --locked
+          sudo --preserve-env=GITHUB_ACTIONS,RUNNER_OS python3 scripts/test-linux-package.py '${{ steps.linux-package.outputs.directory }}/Moth-${{ steps.linux-package.outputs.version }}-linux-x64.deb'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Moth-${{ steps.linux-package.outputs.version }}-linux-x64
+          path: |
+            ${{ steps.linux-package.outputs.directory }}/*.deb
+            ${{ steps.linux-package.outputs.directory }}/*.deb.sha256

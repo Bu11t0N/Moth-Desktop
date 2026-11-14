@@ -1,6 +1,20 @@
 {
   "bundle": {
+    "publisher": "Moth Desktop contributors",
     "targets": ["deb"],
+    "linux": {
+      "deb": {
+        "depends": ["systemd (>= 255)", "systemd-resolved", "init-system-helpers", "iproute2", "python3", "gnome-keyring", "libwebkit2gtk-4.1-0", "libgtk-3-0t64", "libayatana-appindicator3-1"],
+        "files": {
+          "/usr/lib/moth-desktop/moth-service": "../target/release/moth-service",
+          "/usr/lib/systemd/system/moth-desktop.service": "../packaging/linux/moth-desktop.service"
+        },
+        "preInstallScript": "../packaging/linux/preinst",
+        "postInstallScript": "../packaging/linux/postinst",
+        "preRemoveScript": "../packaging/linux/prerm",
+        "postRemoveScript": "../packaging/linux/postrm"
+      }
+    },
     "resources": {
       "../.local/engines/linux-x64/xray": "engines/xray",
       "../.local/engines/linux-x64/sing-box": "engines/sing-box"

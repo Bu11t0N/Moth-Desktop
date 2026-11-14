@@ -208,6 +208,10 @@ async fn connect_vpn(
     tunnel_call(moth_ipc::Command::Connect { link }).await
 }
 fn main() {
+    if std::env::args().nth(1).as_deref() == Some("--version") {
+        println!("{}", env!("CARGO_PKG_VERSION"));
+        return;
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             tray::show_main(app)
