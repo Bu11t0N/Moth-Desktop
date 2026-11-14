@@ -127,7 +127,9 @@ def main():
             shutil.copyfile(__file__, fixture)
             children.append(subprocess.Popen(["ip", "netns", "exec", "moth-ci-sink", sys.executable, str(fixture), "sink"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
             root.mkdir(mode=0o755)
+            root.chmod(0o755)  # Explicitly override the fixture's private umask.
             (root / "engines").mkdir(mode=0o755)
+            (root / "engines").chmod(0o755)
             for source, destination in [(repo / "target/debug/moth-service", root / "moth-service"),
                                         (repo / ".local/engines/linux-x64/xray", root / "engines/xray"),
                                         (repo / ".local/engines/linux-x64/sing-box", root / "engines/sing-box")]:
