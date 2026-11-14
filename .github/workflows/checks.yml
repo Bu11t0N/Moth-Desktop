@@ -19,6 +19,8 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
       - run: npm ci
       - run: npm run engines:fetch
       - run: npm run build
@@ -97,6 +99,8 @@ jobs:
         with:
           node-version: 22
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
       - run: node scripts/fetch-engines.mjs
       - name: Secret Service acceptance dependencies
         run: sudo apt-get update && sudo apt-get install -y gnome-keyring dbus-x11 dnsutils libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf xvfb xfwm4 xfce4-panel

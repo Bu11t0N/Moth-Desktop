@@ -244,6 +244,16 @@ def main():
             restored()
             print("Linux real UID IPC, HTTPS/DNS, TCP/UDP IPv4/IPv6 TUN, engine death, SIGKILL/restart, reconnect and network restoration passed.")
         except Exception:
+            for path in ("/usr/lib/moth-desktop", "/usr/lib/moth-desktop/moth-service", "/run", "/run/user", "/run/user/23101", "/run/moth-desktop", "/run/moth-desktop/control.sock"):
+                try:
+                    metadata = os.lstat(path)
+                    print(f"Acceptance access metadata: {path} uid={metadata.st_uid} mode={oct(metadata.st_mode & 0o7777)}", file=sys.stderr)
+                except FileNotFoundError:
+                    print(f"Acceptance path absent: {path}", file=sys.stderr)
+            for user in ("root", users[0]):
+                health = run("runuser", "-u", user, "--", "/usr/lib/moth-desktop/moth-service", "--status", check=False)
+                # Health/errors are typed and credential-free; never print inputs.
+                print(f"Acceptance health ({user}): exit={health.returncode} " + health.stdout.decode(errors="replace")[:1000] + health.stderr.decode(errors="replace")[:500], file=sys.stderr)
             # The daemon logs only typed public failures, never profile/config input.
             diagnostic = run("journalctl", "-u", "moth-desktop.service", "--no-pager", "-n", "50", check=False)
             sys.stderr.write(diagnostic.stdout.decode(errors="replace"))
