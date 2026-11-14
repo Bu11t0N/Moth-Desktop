@@ -36,7 +36,13 @@ function Check-Profiles {
 }
 function Run-Installer([string]$Path,[bool]$Success=$true) {
     $process=Start-Process -FilePath $Path -ArgumentList '/S' -WindowStyle Hidden -Wait -PassThru
-    if (($process.ExitCode -eq 0) -ne $Success) { throw "Unexpected installer exit code: $($process.ExitCode)." }
+    if (($process.ExitCode -eq 0) -ne $Success) {
+        foreach ($directory in Get-ChildItem -LiteralPath $env:ProgramFiles -Directory -Filter '*.moth-payload') {
+            $errorFile=Join-Path $directory.FullName 'maintenance-error.txt'
+            if (Test-Path -LiteralPath $errorFile) { Get-Content -LiteralPath $errorFile }
+        }
+        throw "Unexpected installer exit code: $($process.ExitCode)."
+    }
     Check-Profiles
 }
 function Check-Installed {

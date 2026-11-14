@@ -54,6 +54,7 @@ Section "Moth Desktop" SEC_MAIN
   GetTempFileName $PackageDir "$PROGRAMFILES64"
   IfErrors failed
   Delete "$PackageDir"
+  StrCpy $PackageDir "$PackageDir.moth-payload"
   CreateDirectory "$PackageDir"
   IfErrors failed
   SetOutPath "$PackageDir"
@@ -76,6 +77,7 @@ Section "Moth Desktop" SEC_MAIN
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\MothDesktop" "QuietUninstallString" '$\"$INSTDIR\Uninstall.exe$\" /S'
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\MothDesktop" "NoModify" 1
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\MothDesktop" "NoRepair" 1
+  IfErrors failed
   ; Only this freshly created protected payload directory may be removed.
   RMDir /r "$PackageDir"
   Goto done

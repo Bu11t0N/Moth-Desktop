@@ -8,6 +8,17 @@ $ErrorActionPreference = 'Stop'
 $serviceName = 'MothDesktopService'
 $installRoot = Join-Path $env:ProgramFiles 'Moth Desktop'
 $expectedVersion = '0.3.3'
+trap {
+    # The graphical installer uses a protected temporary payload directory.
+    # Keep a bounded, credential-free reason there when its silent run fails.
+    if ($InstallDesktop -and $PackageDirectory -and (Test-Path -LiteralPath $PackageDirectory -PathType Container)) {
+        $item = Get-Item -LiteralPath $PackageDirectory -Force
+        if (-not ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+            $_.Exception.Message.Substring(0,[Math]::Min(2048,$_.Exception.Message.Length)) | Set-Content -LiteralPath (Join-Path $PackageDirectory 'maintenance-error.txt') -Encoding UTF8
+        }
+    }
+    throw
+}
 function Assert-PlainTree([string]$Path) {
     if (-not (Test-Path -LiteralPath $Path)) { return }
     $item = Get-Item -LiteralPath $Path -Force
