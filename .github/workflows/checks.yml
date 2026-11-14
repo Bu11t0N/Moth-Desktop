@@ -94,4 +94,6 @@ jobs:
           node-version: 22
       - uses: Swatinem/rust-cache@v2
       - run: node scripts/fetch-engines.mjs
-      - run: cargo test -p moth-core -p moth-platform -p moth-engine -p moth-ipc -p moth-service --locked -- --include-ignored
+      - name: Secret Service acceptance dependencies
+        run: sudo apt-get update && sudo apt-get install -y gnome-keyring dbus-x11
+      - run: bash scripts/test-linux-core.sh

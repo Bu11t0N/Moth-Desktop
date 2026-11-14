@@ -31,6 +31,7 @@ Publication remains gated on target-platform acceptance; the checks below distin
 
 - Graphical Windows NSIS packaging is implemented as a development candidate: one protected staging transaction for GUI/service/pinned cores, all-user shortcuts and uninstall registration. The GUI runs without elevation. Uninstall preserves per-user profiles, modified/unknown files and previous installation backups. Existing manual service-only installation remains supported; graphical installations require the graphical installer for further updates. Actual installer acceptance is pending; do not substitute the previous manual-service acceptance for it.
 - Expanded release work remains pending: functioning Linux daemon/storage/IPC/TUN and `.deb`, signed in-app updates on both platforms, coordinated maintenance and actual two-build update/rollback acceptance, signed release metadata and installer publication. Ubuntu 24.04 with systemd-resolved and Secret Service is the initial Linux target; other distributions require separate acceptance.
+- Linux foundation: fixed Unix socket client with root peer authentication, UID-based daemon authorization and fixed installation ownership checks; Secret Service persistence with encrypted session and no file/plaintext fallback. Linux-target compilation and Clippy pass. Actual isolated Secret Service roundtrip/replacement/corruption/locked-provider acceptance is configured but pending; daemon/TUN/GUI support is still incomplete.
 
 - Fresh implementation f62da4c: [Windows and Linux CI passed](https://github.com/Bu11t0N/Moth-Desktop/actions/runs/43505351323). Windows runner: Windows Server 2025; Linux runner: Ubuntu 24.04. These are fresh candidate results, not substituted 0.3.2 evidence.
 - Rust workspace tests, fmt, Clippy with warnings denied, TypeScript/Vite and ten Playwright scenarios pass. The UI scenarios include service loss after successful health and rejection of a delayed old health response. Health diagnostics do not replace service-owned tunnel state.
@@ -69,5 +70,5 @@ No persistent kill switch: engine/service failure tears down the tunnel and norm
 No automatic reconnect after sleep/network switch; disconnect and connect again.
 DNS on physical adapters is not rewritten. LAN/more-specific existing routes can bypass TUN; applications with explicitly bound adapters are outside the current guarantee.
 No claim of comprehensive IPv6/DNS leak protection or compatibility with concurrent VPNs.
-Linux retains compiling common crates; daemon, storage and TUN integration remain pending.
+Linux has a compiling transport/storage foundation; real keyring acceptance, daemon, TUN and desktop integration remain pending.
 Native GUI DPI/accessibility acceptance and production signing remain pending.

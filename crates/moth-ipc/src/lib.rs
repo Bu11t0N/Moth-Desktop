@@ -4,6 +4,8 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
+#[cfg(target_os = "linux")]
+pub mod linux;
 #[cfg(windows)]
 pub mod windows;
 pub const PROTOCOL_VERSION: u16 = 2;

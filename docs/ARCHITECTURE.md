@@ -51,6 +51,14 @@ DPAPI doesn't protect against malware running as the same user. Linux persistenc
 explicitly unsupported pending a Secret Service/keyring design. No silent plaintext fallback.
 Corruption is a startup error, never an empty library implicitly saved over the original.
 
+Linux foundation in the expanded 0.3.3 candidate uses the desktop Secret Service
+default persistent collection with an encrypted DH session. One versioned secret
+contains the library; the application writes no plaintext profile file and has no
+fallback when the provider is unavailable/locked. The supported desktop must have
+a password-protected keyring. The provider owns encryption at rest. Ambiguous or
+corrupt items fail without silently replacing the library. Windows DPAPI and its
+per-user path remain unchanged. Runtime/keyring acceptance is tracked in STATUS.md.
+
 ## ADR-006: local UI content only
 
 No remote scripts/fonts/images. CSP limits scripts/connect sources; no shell/fs plugin.
@@ -100,3 +108,17 @@ success. Failure restores the prior files and service state; profiles remain in 
 DPAPI store. A trusted manually downloaded ZIP is still required. Signed automatic updates
 and crash-consistent recovery are future work. Release compiler paths are remapped and
 EXEs are scanned; local build paths and debug data are excluded from release packages.
+
+## ADR-010: Linux transport foundation
+
+The Linux client uses only `/run/moth-desktop/control.sock`, checks root-controlled
+parents and a root-owned socket, then verifies SO_PEERCRED UID 0 before writing a
+request. The daemon derives ownership from the kernel peer UID, never request data.
+Root maintenance and desktop UIDs 1000–65533 with a private login runtime directory
+are eligible. Fixed `/usr/lib/moth-desktop` installation files must be root-owned,
+not group/other-writable and contain no symlinks; core hashes remain independently
+verified. The bounded IPC v2 command set is unchanged. This transport foundation
+does not by itself implement a Linux daemon or TUN.
+
+References: [Tokio Unix peer credentials](https://docs.rs/tokio/latest/tokio/net/unix/struct.UCred.html),
+[Secret Service blocking boundary](https://docs.rs/secret-service/5.2.0/secret_service/blocking/index.html).

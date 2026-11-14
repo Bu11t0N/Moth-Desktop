@@ -1,8 +1,12 @@
 //! OS boundary. A future Iced UI can use the same domain and platform crates.
 use moth_core::Library;
 use serde::{Deserialize, Serialize};
-use std::{fs, io::Write, path::PathBuf};
+use std::path::PathBuf;
+#[cfg(not(target_os = "linux"))]
+use std::{fs, io::Write};
 use zeroize::Zeroizing;
+#[cfg(target_os = "linux")]
+mod linux;
 
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
@@ -10,7 +14,7 @@ pub enum StoreError {
     Io(#[from] std::io::Error),
     #[error("Хранилище повреждено или создано другой версией")]
     Invalid,
-    #[error("Не удалось защитить данные учётной записью Windows")]
+    #[error("Защищённое хранилище недоступно; разблокируйте хранилище учётной записи")]
     Protection,
     #[error("Защищённое хранилище Linux ещё не реализовано")]
     Unsupported,
@@ -23,14 +27,25 @@ struct Envelope {
 }
 
 pub struct ProfileStore {
+    #[cfg(not(target_os = "linux"))]
     path: PathBuf,
 }
 impl ProfileStore {
-    pub fn new(directory: PathBuf) -> Self {
+    pub fn new(_directory: PathBuf) -> Self {
         Self {
-            path: directory.join("profiles.dpapi"),
+            #[cfg(not(target_os = "linux"))]
+            path: _directory.join("profiles.dpapi"),
         }
     }
+    #[cfg(target_os = "linux")]
+    pub fn load(&self) -> Result<Library, StoreError> {
+        linux::load()
+    }
+    #[cfg(target_os = "linux")]
+    pub fn save(&self, library: &Library) -> Result<(), StoreError> {
+        linux::save(library)
+    }
+    #[cfg(not(target_os = "linux"))]
     pub fn load(&self) -> Result<Library, StoreError> {
         match fs::metadata(&self.path) {
             Ok(meta) if meta.len() > 8 * 1024 * 1024 => return Err(StoreError::Invalid),
@@ -52,6 +67,7 @@ impl ProfileStore {
         }
         Ok(e.library)
     }
+    #[cfg(not(target_os = "linux"))]
     pub fn save(&self, library: &Library) -> Result<(), StoreError> {
         library.validate().map_err(|_| StoreError::Invalid)?;
         let plain = Zeroizing::new(
@@ -134,11 +150,11 @@ fn seal(input: &[u8]) -> Result<Vec<u8>, StoreError> {
 fn unseal(input: &[u8]) -> Result<Vec<u8>, StoreError> {
     protect(input, false)
 }
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux")))]
 fn seal(_input: &[u8]) -> Result<Vec<u8>, StoreError> {
     Err(StoreError::Unsupported)
 }
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux")))]
 fn unseal(_input: &[u8]) -> Result<Vec<u8>, StoreError> {
     Err(StoreError::Unsupported)
 }
@@ -156,7 +172,7 @@ pub struct Capabilities {
 pub fn capabilities() -> Capabilities {
     Capabilities {
         platform: std::env::consts::OS,
-        secure_storage: cfg!(windows),
+        secure_storage: cfg!(any(windows, target_os = "linux")),
         system_tunnel: cfg!(windows),
         kill_switch: false,
     }
