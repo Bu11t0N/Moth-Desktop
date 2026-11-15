@@ -30,8 +30,21 @@ its notice is in `licenses/tauri-api-MIT.txt`. `licenses/dependency-inventory.js
 records source-lock/configuration and output hashes; `python scripts/license-notices.py`
 checks them. To regenerate after dependency changes, run `npm ci`, then
 `python scripts/license-notices.py generate PATH_TO_CARGO_ABOUT_0_9_3`.
-Build-only dependencies are excluded. The upstream engine Go dependency notices
-still require a separate complete inventory before production publication.
+Build-only Rust/JavaScript dependencies are excluded.
+
+`licenses/Engine-dependencies.tar.gz` preserves notices collected with
+google/go-licenses v2.0.1 for both exact upstream source revisions and both target
+platforms, including source files copied by that tool for copyleft dependencies.
+Its SOURCE-INDEX.json also inventories all 149 distinct dependency modules read
+from the four pinned binaries' Go build metadata. Each module source sum was
+independently checked by `go mod download` against the binary's recorded sum;
+all module license/notice/copyright/author files are included. Original Go runtime
+licenses, upstream go.mod/go.sum and complete Apache/GPL texts are included.
+Short upstream GPL declarations and go-nat-pmp's Apache declaration are preserved
+verbatim alongside full license texts; the classifier's unknown results for these
+short notices are recorded explicitly in `licenses/engine-inventory.json`.
+The engine binaries are unmodified and are not rebuilt by this inventory process.
+See [regeneration and exact source links](docs/DEPENDENCY-NOTICES.md).
 
 The embedded amd64 Wintun DLL matches official Wintun 0.14.1: SHA-256 e5da8447dc2c320edc0fc52fa01885c103de8c118481f683643cacc3220dafce. Official archive SHA-256: 07c256185d6ee3652e09fa55c0b673e2624b565e02c4b9091c79ca7d2f24ef51 (https://www.wintun.net/builds/wintun-0.14.1.zip). The prebuilt-binary license is preserved in licenses/Wintun-0.14.1.txt. Git blob aee04e77bfbd6601adbcd5a46435f059e31cf6e4 matches sing-tun v0.7.13 internal/wintun/amd64/wintun.dll.
 

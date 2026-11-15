@@ -1,0 +1,16 @@
+{
+  "collector": "github.com/google/go-licenses/v2 v2.0.1",
+  "engineLockSha256": "0ff66c4cbdc87dc813bffe6575335ed454056e0394b1a339ba7e1b3967a42465",
+  "archive": "licenses/Engine-dependencies.tar.gz",
+  "archiveSha256": "9b017761e0d1a1e61bede55a36cc01ef55d1b134ce036a058fa5e8918e9c44df",
+  "modules": 149,
+  "files": 3031,
+  "manualDeclarations": {
+    "github.com/jackpal/go-nat-pmp": "Apache-2.0 notice; full text supplied separately",
+    "github.com/anytls/sing-anytls": "GPL-3.0-or-later",
+    "github.com/sagernet/fswatch": "GPL-3.0-or-later",
+    "github.com/sagernet/sing": "GPL-3.0-or-later",
+    "github.com/sagernet/sing-vmess": "GPL-3.0-or-later",
+    "github.com/sagernet/sing-box": "GPL-3.0-or-later; retain additional upstream naming notice"
+  }
+}

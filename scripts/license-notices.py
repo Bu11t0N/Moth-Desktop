@@ -46,7 +46,12 @@ def main():
     report = (ROOT / OUTPUTS[0]).read_text(encoding="utf-8")
     if re.search(r"(?:file:///|\b[A-Za-z]:[\\/]|/home/runner/|/Users/)", report):
         raise RuntimeError("Local path in generated license report")
-    print("Locked Rust and bundled JavaScript notices match their reviewed inputs.")
+    engines = json.loads((ROOT / "licenses/engine-inventory.json").read_text())
+    archive = ROOT / engines["archive"]
+    if (digest("engines.lock.json") != engines["engineLockSha256"]
+            or hashlib.sha256(archive.read_bytes()).hexdigest() != engines["archiveSha256"]):
+        raise RuntimeError("Pinned engine notices need regeneration")
+    print("Locked Rust, JavaScript and pinned engine notices match their reviewed inputs.")
 
 
 if __name__ == "__main__":
