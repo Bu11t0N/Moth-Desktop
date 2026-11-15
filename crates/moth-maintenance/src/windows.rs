@@ -207,6 +207,8 @@ pub(super) fn environment(command: &mut Command) -> Result<()> {
             windows.components().next().ok_or(())?.as_os_str(),
         )
         .env("PATH", windows.join("System32"))
+        .env("PATHEXT", ".COM;.EXE;.BAT;.CMD")
+        .env("ComSpec", windows.join("System32/cmd.exe"))
         .creation_flags(0x08000000);
     Ok(())
 }

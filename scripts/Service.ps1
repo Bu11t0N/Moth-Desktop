@@ -12,6 +12,8 @@ $env:SystemRoot = [Environment]::GetFolderPath('Windows')
 $env:PSModulePath = [IO.Path]::Combine($PSHOME,'Modules') + [IO.Path]::PathSeparator + [IO.Path]::Combine($env:SystemRoot,'System32\WindowsPowerShell\v1.0\Modules')
 $env:ProgramFiles = [Environment]::GetFolderPath('ProgramFiles')
 $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+$env:PATHEXT = '.COM;.EXE;.BAT;.CMD'
+$env:ComSpec = [IO.Path]::Combine($env:SystemRoot,'System32\cmd.exe')
 if ([IntPtr]::Size -ne 8) { throw '64-bit PowerShell is required for Moth Desktop maintenance.' }
 $serviceName = 'MothDesktopService'
 $installRoot = Join-Path $env:ProgramFiles 'Moth Desktop'
@@ -160,7 +162,7 @@ $hashes = @{
 }
 if (-not (Test-Path -LiteralPath $client -PathType Leaf)) { throw 'Package service executable missing.' }
 $version = & $client --version
-if ($LASTEXITCODE -ne 0 -or $version -ne $expectedVersion) { throw 'Package service version does not match this installer.' }
+if ($LASTEXITCODE -ne 0 -or $version -ne $expectedVersion) { throw "Package service version does not match this installer (exit=$LASTEXITCODE; reported=$version; expected=$expectedVersion)." }
 foreach ($relative in $hashes.Keys) {
     if ((Get-FileHash -LiteralPath (Join-Path $package $relative) -Algorithm SHA256).Hash.ToLowerInvariant() -ne $hashes[$relative]) { throw 'Package engine checksum mismatch.' }
 }
