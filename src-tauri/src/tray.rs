@@ -282,7 +282,10 @@ pub fn setup(app: &tauri::App) -> tauri::Result<()> {
 pub fn run_event(app: &AppHandle, event: tauri::RunEvent) {
     match event {
         #[cfg(all(any(windows, target_os = "linux"), debug_assertions))]
-        tauri::RunEvent::Ready => crate::native_acceptance::start(app),
+        tauri::RunEvent::Ready => {
+            crate::native_acceptance::start(app);
+            crate::updater_acceptance::start(app);
+        }
         tauri::RunEvent::WindowEvent {
             label,
             event: tauri::WindowEvent::CloseRequested { api, .. },

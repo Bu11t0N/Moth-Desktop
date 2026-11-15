@@ -2276,6 +2276,7 @@ dependencies = [
 name = "moth-desktop"
 version = "0.3.3"
 dependencies = [
+ "libc",
  "moth-core",
  "moth-engine",
  "moth-ipc",
@@ -2283,6 +2284,7 @@ dependencies = [
  "moth-update",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tauri",
  "tauri-build",
  "tauri-plugin-single-instance",

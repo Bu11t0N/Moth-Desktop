@@ -48,3 +48,13 @@ the same Windows account-bound DPAPI storage or Linux Secret Service collection.
 Removal preserves profiles and maintenance backups rather than recursively
 deleting user or unknown files. The updater key signs updates; it is not Windows
 Authenticode. Private signing keys/passwords are never repository or release assets.
+
+The two-build native acceptance driver is debug-only and guarded for disposable
+hosted CI. Its isolated source tree compiles a separate ephemeral trust anchor
+and fixed HTTPS fixture endpoint; it does not add a runtime endpoint/key override.
+The guest OS trusts only that job's temporary test CA, removed during cleanup.
+The CI harness performs administrator authorization while the ordinary-user GUI
+and the unchanged privileged verifier perform the real update. Production builds
+always request UAC/polkit authorization. The monitor has a distinct application
+identity and an atomic restart guard. Test installers, private keys and compiled
+test trust anchors are never release artifacts or shared-cache uploads.

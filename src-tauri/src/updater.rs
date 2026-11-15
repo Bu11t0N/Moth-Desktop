@@ -12,7 +12,7 @@ use uuid::Uuid;
 #[derive(Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Status {
-    phase: String,
+    pub(super) phase: String,
     update: Option<UpdateSummary>,
     downloaded: u64,
     total: u64,
@@ -29,6 +29,7 @@ pub struct Updater {
     inner: Mutex<Inner>,
     operation: tokio::sync::Mutex<()>,
     monitor: Option<Uuid>,
+    restarting: std::sync::atomic::AtomicBool,
 }
 fn status(app: &AppHandle, change: impl FnOnce(&mut Status)) {
     if let Ok(mut inner) = app.state::<Updater>().inner.lock() {
@@ -176,11 +177,18 @@ pub async fn check_updates(app: AppHandle) -> Result<Status, String> {
     }
 }
 fn cache_directory(app: &AppHandle) -> Result<PathBuf, String> {
-    let cache = app
-        .path()
-        .app_cache_dir()
-        .map_err(|_| "Папка обновления недоступна")?
-        .join("updates");
+    #[cfg(debug_assertions)]
+    let test_cache = crate::updater_acceptance::cache_directory();
+    #[cfg(not(debug_assertions))]
+    let test_cache: Option<PathBuf> = None;
+    let cache = match test_cache {
+        Some(path) => path,
+        None => app
+            .path()
+            .app_cache_dir()
+            .map_err(|_| "Папка обновления недоступна")?
+            .join("updates"),
+    };
     fs::create_dir_all(&cache).map_err(|_| "Не удалось создать папку обновления")?;
     let request = cache.join(Uuid::new_v4().to_string());
     fs::create_dir(&request).map_err(|_| "Не удалось создать папку обновления")?;
@@ -380,9 +388,15 @@ pub async fn install_update(app: AppHandle) -> Result<(), String> {
         crate::tray::stop_owned()
             .await
             .map_err(|_| "Не удалось подтвердить отключение VPN")?;
-        tauri::async_runtime::spawn_blocking(move || elevate(&helper, &request))
-            .await
-            .map_err(|_| "Не удалось запустить updater")??;
+        tauri::async_runtime::spawn_blocking(move || {
+            #[cfg(debug_assertions)]
+            if let Some(result) = crate::updater_acceptance::authorize(&request) {
+                return result;
+            }
+            elevate(&helper, &request)
+        })
+        .await
+        .map_err(|_| "Не удалось запустить updater")??;
         let deadline = Instant::now() + Duration::from_secs(120);
         loop {
             if let Ok(report) = root_status(id) {
@@ -437,18 +451,27 @@ pub fn restart_updated_app(app: AppHandle, state: tauri::State<Updater>) -> Resu
     if !matches!(root_status(id)?.phase.as_str(), "complete" | "failed") {
         return Err("Дождитесь завершения установки или восстановления".into());
     }
-    let path = installed_gui()?;
-    moth_ipc::maintenance::validate_protected_path(&path)
-        .map_err(|_| "Установленное приложение недоступно")?;
-    let mut command = std::process::Command::new(path);
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        command.creation_flags(0x08000000);
+    if state.restarting.swap(true, Ordering::AcqRel) {
+        return Err("Перезапуск уже выполняется".into());
     }
-    command
-        .spawn()
-        .map_err(|_| "Не удалось открыть приложение")?;
-    app.exit(0);
-    Ok(())
+    let result = (|| {
+        let path = installed_gui()?;
+        moth_ipc::maintenance::validate_protected_path(&path)
+            .map_err(|_| "Установленное приложение недоступно")?;
+        let mut command = std::process::Command::new(path);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(0x08000000);
+        }
+        command
+            .spawn()
+            .map_err(|_| "Не удалось открыть приложение")?;
+        app.exit(0);
+        Ok(())
+    })();
+    if result.is_err() {
+        state.restarting.store(false, Ordering::Release);
+    }
+    result
 }

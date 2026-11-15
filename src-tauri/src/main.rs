@@ -9,6 +9,8 @@ use uuid::Uuid;
 mod native_acceptance;
 mod tray;
 mod updater;
+#[cfg(all(any(windows, target_os = "linux"), debug_assertions))]
+mod updater_acceptance;
 
 struct AppState {
     store: ProfileStore,
@@ -218,6 +220,14 @@ fn main() {
         Err(_) => std::process::exit(1),
     };
     if monitor.is_some() {
+        // A separate GTK application identity lets the monitor coexist with
+        // the exiting GUI and the subsequently restarted installed instance.
+        // It never initializes profile storage or the single-instance plugin.
+        let mut context = tauri::generate_context!();
+        context.config_mut().identifier.push_str(".updater");
+        if let Some(window) = context.config_mut().app.windows.first_mut() {
+            window.title = "Обновление Moth".into();
+        }
         tauri::Builder::default()
             .manage(updater::state(monitor))
             .invoke_handler(tauri::generate_handler![
@@ -225,8 +235,14 @@ fn main() {
                 updater::update_status,
                 updater::restart_updated_app
             ])
-            .run(tauri::generate_context!())
-            .expect("Не удалось открыть окно установки");
+            .build(context)
+            .expect("Не удалось открыть окно установки")
+            .run(|_app, _event| {
+                #[cfg(debug_assertions)]
+                if matches!(_event, tauri::RunEvent::Ready) {
+                    updater_acceptance::start_monitor(_app);
+                }
+            });
         return;
     }
     tauri::Builder::default()

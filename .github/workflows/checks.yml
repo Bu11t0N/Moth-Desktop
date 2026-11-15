@@ -138,3 +138,45 @@ jobs:
           path: |
             ${{ steps.linux-package.outputs.directory }}/*.deb
             ${{ steps.linux-package.outputs.directory }}/*.deb.sha256
+  signed-updates-windows:
+    needs: windows-installer
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows
+          save-if: false
+      - name: Install pinned NSIS compiler
+        run: choco install nsis --version=3.11 --yes --no-progress --allow-downgrade
+      - name: Real two-build signed updates, rejection, rollback, retry and user restart
+        run: python scripts/test-signed-updates.py
+  signed-updates-linux:
+    needs: linux-core
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: linux-core
+          save-if: false
+      - name: Native desktop, encrypted keyring and package tooling
+        run: sudo apt-get update && sudo apt-get install -y gnome-keyring dbus-x11 libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf xvfb xfwm4 dpkg-repack pkexec
+      - name: Real two-build signed apt updates, rejection, rollback and ordinary-user restart
+        run: python3 scripts/test-signed-updates.py
