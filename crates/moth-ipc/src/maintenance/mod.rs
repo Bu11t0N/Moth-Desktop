@@ -28,7 +28,11 @@ pub fn create_protected_directory(path: &Path) -> Result<(), IpcError> {
     platform::create_directory(path)
 }
 pub fn create_protected_file(path: &Path) -> Result<File, IpcError> {
-    platform::create_file(path)
+    platform::create_file(path, true)
+}
+/// Unverified input must stay administrator/root-only even if verification fails.
+pub fn create_private_file(path: &Path) -> Result<File, IpcError> {
+    platform::create_file(path, false)
 }
 pub fn validate_protected_path(path: &Path) -> Result<(), IpcError> {
     platform::validate_path(path)

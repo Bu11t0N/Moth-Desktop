@@ -42,6 +42,14 @@ try {
     $connected=Invoke-Client '--connect' $link $Credential
     if($connected.phase -ne 'connected' -or -not $connected.ownedByCaller){throw 'Standard-user VPN did not pass real TUN HTTPS/DNS verification'}
     $leaseExample=Join-Path $PSScriptRoot '..\target\debug\examples\maintenance_acceptance.exe'
+    $privateInput=(& $leaseExample private-create).Trim()
+    if($LASTEXITCODE -ne 0){throw 'Private maintenance input creation failed'}
+    try {
+        $privateCheck=Start-Process -FilePath $leaseExample -ArgumentList "private-denied `"$privateInput`"" -Credential $Credential -LoadUserProfile -WorkingDirectory $env:SystemRoot -WindowStyle Hidden -Wait -PassThru
+        if($privateCheck.ExitCode -ne 0){throw 'Ordinary user could read private maintenance input'}
+        $privateCheck.Dispose()
+    } finally {Remove-Item -LiteralPath $privateInput}
+    Write-Output 'Actual ordinary-user private maintenance-input denial passed.'
     & $leaseExample blocked
     if($LASTEXITCODE -ne 0){throw 'Updater was not blocked by the actual service-owned tunnel lease'}
     $rejected=$false

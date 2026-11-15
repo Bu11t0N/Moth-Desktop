@@ -184,6 +184,12 @@ def main():
             wait(lambda: cli(users[0], "--status")["systemTunnel"], "Ordinary-user authenticated daemon health failed")
             lease_example=str(repo / "target/debug/examples/maintenance_acceptance")
             run(lease_example,"available")
+            private_input = Path(run(lease_example, "private-create").stdout.decode().strip())
+            try:
+                run("runuser", "-u", users[0], "--", lease_example, "private-denied", str(private_input))
+            finally:
+                private_input.unlink()
+            print("Actual ordinary-user private maintenance-input denial passed", flush=True)
 
             def connected():
                 result = cli(users[0], "--connect", profile)

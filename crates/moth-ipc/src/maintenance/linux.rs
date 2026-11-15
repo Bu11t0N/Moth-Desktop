@@ -34,17 +34,18 @@ pub(super) fn create_directory(path: &Path) -> Result<(), IpcError> {
         .map_err(|_| IpcError::AccessDenied)?;
     validate_path(path)
 }
-pub(super) fn create_file(path: &Path) -> Result<File, IpcError> {
+pub(super) fn create_file(path: &Path, readable: bool) -> Result<File, IpcError> {
     root()?;
     validate_path(path.parent().ok_or(IpcError::UntrustedPeer)?)?;
+    let mode = if readable { 0o644 } else { 0o600 };
     let file = OpenOptions::new()
         .write(true)
         .create_new(true)
-        .mode(0o644)
+        .mode(mode)
         .custom_flags(libc::O_NOFOLLOW)
         .open(path)
         .map_err(|_| IpcError::AccessDenied)?;
-    file.set_permissions(fs::Permissions::from_mode(0o644))
+    file.set_permissions(fs::Permissions::from_mode(mode))
         .map_err(|_| IpcError::AccessDenied)?;
     Ok(file)
 }

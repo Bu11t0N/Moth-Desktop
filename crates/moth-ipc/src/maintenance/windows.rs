@@ -113,10 +113,14 @@ pub(super) fn create_directory(path: &Path) -> Result<(), IpcError> {
     }
     validate_path(path)
 }
-pub(super) fn create_file(path: &Path) -> Result<File, IpcError> {
+pub(super) fn create_file(path: &Path, readable: bool) -> Result<File, IpcError> {
     admin()?;
     validate_path(path.parent().ok_or(IpcError::UntrustedPeer)?)?;
-    let (_memory, attributes) = attributes("O:BAG:BAD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FRFX;;;BU)")?;
+    let (_memory, attributes) = attributes(if readable {
+        "O:BAG:BAD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FRFX;;;BU)"
+    } else {
+        "O:BAG:BAD:P(A;;FA;;;SY)(A;;FA;;;BA)"
+    })?;
     unsafe {
         let handle = CreateFileW(
             wide(path).as_ptr(),

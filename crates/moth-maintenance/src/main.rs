@@ -67,9 +67,14 @@ fn bytes(path: &Path, limit: u64) -> Result<Vec<u8>> {
     }
     Ok(bytes)
 }
-fn copy(source: &Path, destination: &Path, limit: u64) -> Result<()> {
+fn copy(source: &Path, destination: &Path, limit: u64, private: bool) -> Result<()> {
     let source = bounded_file(source, limit)?;
-    let mut destination = secure::create_protected_file(destination).map_err(|_| ())?;
+    let mut destination = if private {
+        secure::create_private_file(destination)
+    } else {
+        secure::create_protected_file(destination)
+    }
+    .map_err(|_| ())?;
     let size = std::io::copy(&mut source.take(limit + 1), &mut destination).map_err(|_| ())?;
     if size > limit {
         return Err(());
@@ -275,7 +280,9 @@ fn apply(request: &Path) -> Result<()> {
         )
         .map_err(|_| ())?;
         let package = job.join(platform::PACKAGE);
-        copy(&request.join("package.bin"), &package, PACKAGE_LIMIT)?;
+        // Do not expose input bytes through public maintenance status storage
+        // before the independent package signature/hash check has succeeded.
+        copy(&request.join("package.bin"), &package, PACKAGE_LIMIT, true)?;
         update.verify_package(&package).map_err(|_| ())?;
         platform::validate_package(&job, &package, update.version())?;
         report(&job, "preparing", update.version())?;

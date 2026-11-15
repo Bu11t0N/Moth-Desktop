@@ -254,7 +254,7 @@ pub(super) fn install() -> Result<()> {
         return Ok(());
     }
     let temporary = versioned.join(format!("{}.tmp", Uuid::new_v4()));
-    copy(&current, &temporary, 64 * 1024 * 1024)?;
+    copy(&current, &temporary, 64 * 1024 * 1024, false)?;
     fs::rename(temporary, target).map_err(|_| ())
 }
 fn wait_gui(job: &Path) -> Result<()> {
