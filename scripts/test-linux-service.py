@@ -185,10 +185,16 @@ def main():
             lease_example=str(repo / "target/debug/examples/maintenance_acceptance")
             run(lease_example,"available")
             private_input = Path(run(lease_example, "private-create").stdout.decode().strip())
+            private_reader = root / "maintenance-acceptance"
+            shutil.copyfile(lease_example, private_reader)
+            private_reader.chmod(0o755)
             try:
-                run("runuser", "-u", users[0], "--", lease_example, "private-denied", str(private_input))
+                result = run("runuser", "-u", users[0], "--", "env", "GITHUB_ACTIONS=true", str(private_reader), "private-denied", str(private_input), check=False)
+                if result.returncode:
+                    raise RuntimeError("Private input read-denial fixture failed: " + result.stderr.decode(errors="replace")[-1000:])
             finally:
                 private_input.unlink()
+                private_reader.unlink()
             print("Actual ordinary-user private maintenance-input denial passed", flush=True)
 
             def connected():

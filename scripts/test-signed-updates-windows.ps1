@@ -136,6 +136,10 @@ try {
         Write-Output "Actual ordinary-user signed update acceptance passed: $case"
     }
 } catch {
+    foreach ($payload in Get-ChildItem -LiteralPath $env:ProgramFiles -Directory -Filter '*.moth-payload') {
+        $reason=Join-Path $payload.FullName 'maintenance-error.txt'
+        if (Test-Path -LiteralPath $reason -PathType Leaf) { Get-Content -LiteralPath $reason -TotalCount 10 }
+    }
     foreach ($job in $jobs) {
         if (Test-Path -LiteralPath (Join-Path $job 'status.json')) { Get-Content -LiteralPath (Join-Path $job 'status.json') }
         Get-ChildItem -LiteralPath $job -Filter '*.event' | Select-Object -ExpandProperty Name

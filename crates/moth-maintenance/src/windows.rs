@@ -7,7 +7,7 @@ use windows_sys::Win32::{
 };
 use windows_sys::Win32::{
     System::{Com::CoTaskMemFree, SystemInformation::GetWindowsDirectoryW},
-    UI::Shell::{FOLDERID_ProgramFiles, SHGetKnownFolderPath},
+    UI::Shell::{FOLDERID_ProgramFiles, FOLDERID_Public, SHGetKnownFolderPath},
 };
 pub(super) struct ChildGroup(HANDLE);
 pub(super) fn finish(group: &ChildGroup) -> Result<()> {
@@ -157,14 +157,12 @@ pub(super) fn validate_package(_job: &Path, package: &Path, expected: &str) -> R
     Ok(())
 }
 fn program_files() -> Result<PathBuf> {
+    known_folder(&FOLDERID_ProgramFiles)
+}
+fn known_folder(folder: &windows_sys::core::GUID) -> Result<PathBuf> {
     unsafe {
         let mut pointer = std::ptr::null_mut();
-        if SHGetKnownFolderPath(
-            &FOLDERID_ProgramFiles,
-            0,
-            std::ptr::null_mut(),
-            &mut pointer,
-        ) < 0
+        if SHGetKnownFolderPath(folder, 0, std::ptr::null_mut(), &mut pointer) < 0
             || pointer.is_null()
         {
             return Err(());
@@ -195,10 +193,19 @@ pub(super) fn service() -> Result<PathBuf> {
 }
 pub(super) fn environment(command: &mut Command) -> Result<()> {
     let windows = windows()?;
+    let state = secure::state_directory().map_err(|_| ())?;
     command
         .env("SystemRoot", &windows)
         .env("WINDIR", &windows)
         .env("ProgramFiles", program_files()?)
+        .env("ProgramW6432", program_files()?)
+        .env("ProgramData", state.parent().ok_or(())?)
+        .env("ALLUSERSPROFILE", state.parent().ok_or(())?)
+        .env("PUBLIC", known_folder(&FOLDERID_Public)?)
+        .env(
+            "SystemDrive",
+            windows.components().next().ok_or(())?.as_os_str(),
+        )
         .env("PATH", windows.join("System32"))
         .creation_flags(0x08000000);
     Ok(())
