@@ -58,3 +58,21 @@ and the unchanged privileged verifier perform the real update. Production builds
 always request UAC/polkit authorization. The monitor has a distinct application
 identity and an atomic restart guard. Test installers, private keys and compiled
 test trust anchors are never release artifacts or shared-cache uploads.
+
+## Manual production workflow
+
+`Signed desktop release` is dispatched manually from `main`, with the numeric
+successful `Desktop checks` run for that exact source revision. All five jobs,
+including both native signed-update jobs, must pass. It downloads only that run's
+production ZIP/NSIS/deb artifacts. The protected `release` environment supplies
+the encrypted Tauri key and password through environment variables; signer output
+is suppressed, and no key/password enters process arguments or release assets.
+The compiled public key verifies metadata and every package signature on Windows
+and Linux. SHA256SUMS covers packages, signatures, metadata and notes.
+
+The default `publish=false` produces a verified artifact for review. Only an
+explicit manual dispatch with `publish=true` creates the versioned GitHub Release
+and tag after verification. Existing tags/releases are refused; assets are never
+overwritten by a rerun. Publication uses a draft until all assets have uploaded.
+This workflow is configured, not yet production-executed; source, acceptance and
+dependency-notice gates in STATUS.md still apply.

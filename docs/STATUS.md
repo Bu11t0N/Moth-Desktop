@@ -77,5 +77,5 @@ No persistent kill switch: engine/service failure tears down the tunnel and norm
 No automatic reconnect after sleep/network switch; disconnect and connect again.
 DNS on physical adapters is not rewritten. LAN/more-specific existing routes can bypass TUN; applications with explicitly bound adapters are outside the current guarantee.
 No claim of comprehensive IPv6/DNS leak protection or compatibility with concurrent VPNs.
-Linux has a compiling transport/storage foundation; real keyring acceptance, daemon, TUN and desktop integration remain pending.
+Linux candidate daemon, keyring, TUN, native desktop lifecycle and Debian package acceptance have passed on Ubuntu 24.04; production publication and signed-update acceptance remain pending.
 Native GUI DPI/accessibility acceptance and production signing remain pending.

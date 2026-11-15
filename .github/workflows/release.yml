@@ -1,0 +1,115 @@
+name: Signed desktop release
+on:
+  workflow_dispatch:
+    inputs:
+      accepted_run:
+        description: Successful Desktop checks run for the exact main revision
+        required: true
+        type: string
+      publish:
+        description: Publish the verified assets and create the version tag
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: production-desktop-release
+  cancel-in-progress: false
+jobs:
+  sign:
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    environment: release
+    outputs:
+      version: ${{ steps.gate.outputs.version }}
+      revision: ${{ steps.gate.outputs.revision }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACCEPTED_RUN: ${{ inputs.accepted_run }}
+        run: python scripts/release-gate.py "$env:ACCEPTED_RUN"
+      - run: npm ci
+      - run: python scripts/license-notices.py
+      - name: Download the exact accepted production artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACCEPTED_RUN: ${{ inputs.accepted_run }}
+          VERSION: ${{ steps.gate.outputs.version }}
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory release | Out-Null
+          foreach ($suffix in @('windows-x64','windows-x64-installer','linux-x64')) {
+            gh run download $env:ACCEPTED_RUN --repo Bu11t0N/Moth-Desktop --name "Moth-$env:VERSION-$suffix" --dir release
+            if ($LASTEXITCODE -ne 0) { throw 'Accepted artifact download failed.' }
+          }
+          Get-ChildItem release -Filter '*.sha256' | Remove-Item
+          if (@(Get-ChildItem release -File).Count -ne 3) { throw 'Unexpected release artifact set.' }
+      - name: Sign packages and metadata without logging signer material
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.MOTH_UPDATER_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.MOTH_UPDATER_KEY_PASSWORD }}
+        shell: pwsh
+        run: |
+          node scripts/sign-release.cjs release *> $null
+          if ($LASTEXITCODE -ne 0) { throw 'Release signing failed; signer output is intentionally suppressed.' }
+      - run: cargo run -p moth-update --example verify_release --locked -- release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signed-desktop-release
+          path: release/*
+          retention-days: 14
+  verify-linux:
+    needs: sign
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/download-artifact@v4
+        with:
+          name: signed-desktop-release
+          path: release
+      - run: sha256sum --check SHA256SUMS
+        working-directory: release
+      - run: cargo run -p moth-update --example verify_release --locked -- release
+  publish:
+    if: inputs.publish
+    needs: [sign, verify-linux]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: signed-desktop-release
+          path: release
+      - name: Publish once after cross-platform verification
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.sign.outputs.version }}
+          REVISION: ${{ needs.sign.outputs.revision }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Fail on any pre-existing tag/release; reruns never overwrite assets.
+          python3 - <<'PY'
+          import os,urllib.request,urllib.error
+          base='https://api.github.com/repos/Bu11t0N/Moth-Desktop'
+          for endpoint in ['/git/ref/tags/v'+os.environ['VERSION'],'/releases/tags/v'+os.environ['VERSION']]:
+              request=urllib.request.Request(base+endpoint,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN']})
+              try:
+                  urllib.request.urlopen(request,timeout=30)
+              except urllib.error.HTTPError as error:
+                  if error.code==404: continue
+                  raise
+              raise RuntimeError('Version already exists; publication refused')
+          PY
+          gh release create "v$VERSION" release/* --repo Bu11t0N/Moth-Desktop --target "$REVISION" --draft --title "Moth Desktop $VERSION" --notes-file release/RELEASE.txt
+          gh release edit "v$VERSION" --repo Bu11t0N/Moth-Desktop --draft=false
