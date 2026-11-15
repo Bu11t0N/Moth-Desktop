@@ -12,7 +12,13 @@ use std::{
 const LINK: &str = "moth0";
 const RUNTIME: &str = "/run/moth-desktop";
 const LEASE: &str = "/run/moth-desktop/network-v1.json";
-const JOURNAL: &[u8] = b"{\"version\":1,\"kind\":\"moth-network\"}\n";
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Journal {
+    version: u32,
+    kind: String,
+    auxiliary_priority: u32,
+}
 const TABLE: &str = "20220";
 const PRIORITY: &str = "20220";
 const PROTOCOL: &str = "242";
@@ -99,6 +105,28 @@ fn owned(rule: &serde_json::Value) -> bool {
             })
         })
 }
+fn owned_auxiliary(rule: &serde_json::Value, priority: u32) -> bool {
+    number(&rule["priority"]) == Some(priority as u64)
+        && number(&rule["table"]) == Some(20220)
+        && rule["src"].as_str() == Some("all")
+        && rule["oif"].as_str() == Some(LINK)
+        && rule
+            .get("protocol")
+            .is_none_or(|value| number(value) == Some(0))
+        && rule.as_object().is_some_and(|object| {
+            object.keys().all(|key| {
+                [
+                    "priority",
+                    "src",
+                    "oif",
+                    "oif_detached",
+                    "table",
+                    "protocol",
+                ]
+                .contains(&key.as_str())
+            })
+        })
+}
 fn runtime() -> Result<(), EngineError> {
     for path in ["/run", RUNTIME] {
         let metadata = fs::symlink_metadata(path).map_err(|_| EngineError::Network)?;
@@ -126,31 +154,68 @@ pub fn recover_network() -> Result<(), EngineError> {
     if !metadata.is_file()
         || metadata.uid() != 0
         || metadata.mode() & 0o077 != 0
-        || metadata.len() > 128
+        || metadata.len() > 256
     {
         return Err(EngineError::Network);
     }
     let mut bytes = Vec::new();
-    file.take(129)
+    file.take(257)
         .read_to_end(&mut bytes)
         .map_err(|_| EngineError::Network)?;
-    if bytes != JOURNAL {
+    let journal: Journal = serde_json::from_slice(&bytes).map_err(|_| EngineError::Network)?;
+    if journal.version != 1
+        || journal.kind != "moth-network"
+        || journal.auxiliary_priority == 0
+        || journal.auxiliary_priority >= u32::MAX - 1
+        || journal.auxiliary_priority == 20220
+    {
         return Err(EngineError::Network);
     }
     for family in ["-4", "-6"] {
         let entries = rules(family)?;
-        let entries: Vec<_> = entries.iter().filter(|rule| reserved(rule)).collect();
-        if entries.len() > 1 || entries.iter().any(|rule| !owned(rule)) {
+        let entries: Vec<_> = entries
+            .iter()
+            .filter(|rule| {
+                reserved(rule)
+                    || family == "-6"
+                        && (rule["oif"].as_str() == Some(LINK)
+                            || number(&rule["priority"]) == Some(journal.auxiliary_priority as u64))
+            })
+            .collect();
+        let main: Vec<_> = entries.iter().filter(|rule| owned(rule)).collect();
+        let auxiliary: Vec<_> = entries
+            .iter()
+            .filter(|rule| family == "-6" && owned_auxiliary(rule, journal.auxiliary_priority))
+            .collect();
+        if main.len() > 1 || auxiliary.len() > 1 || main.len() + auxiliary.len() != entries.len() {
             return Err(EngineError::Network);
         }
-        if !entries.is_empty() {
+        if !auxiliary.is_empty() {
+            ip(&[
+                "-6",
+                "rule",
+                "del",
+                "pref",
+                &journal.auxiliary_priority.to_string(),
+                "oif",
+                LINK,
+                "table",
+                TABLE,
+            ])?;
+        }
+        if !main.is_empty() {
             ip(&[
                 family, "rule", "del", "pref", PRIORITY, "not", "fwmark", MARK_TEXT, "table",
                 TABLE, "protocol", PROTOCOL,
             ])?;
-            if rules(family)?.iter().any(reserved) {
-                return Err(EngineError::Network);
-            }
+        }
+        if rules(family)?.iter().any(|rule| {
+            reserved(rule)
+                || family == "-6"
+                    && (rule["oif"].as_str() == Some(LINK)
+                        || number(&rule["priority"]) == Some(journal.auxiliary_priority as u64))
+        }) {
+            return Err(EngineError::Network);
         }
     }
     fs::remove_file(LEASE).map_err(|_| EngineError::Network)?;
@@ -168,7 +233,10 @@ impl NetworkLease {
             return Err(EngineError::Network);
         }
         for family in ["-4", "-6"] {
-            if rules(family)?.iter().any(reserved) {
+            if rules(family)?
+                .iter()
+                .any(|rule| reserved(rule) || rule["oif"].as_str() == Some(LINK))
+            {
                 return Err(EngineError::Network);
             }
             if array(&ip(&[family, "-N", "-j", "route", "show", "table", "all"])?)?
@@ -178,6 +246,20 @@ impl NetworkLease {
                 return Err(EngineError::Network);
             }
         }
+        // sing-tun adds an IPv6 oif rule even with auto_route=false. Its exact
+        // priority is one below the smallest positive existing IPv6 priority.
+        // Record that ownership before spawning it, and use our reserved table.
+        let auxiliary_priority = rules("-6")?
+            .iter()
+            .filter_map(|rule| number(&rule["priority"]))
+            .filter(|priority| *priority > 0)
+            .min()
+            .map(|priority| priority.min(20220))
+            .and_then(|priority| priority.checked_sub(1))
+            .filter(|priority| {
+                *priority > 0 && *priority != 20220 && *priority < u32::MAX as u64 - 1
+            })
+            .ok_or(EngineError::Network)? as u32;
         // Require the supported resolved stub setup before any network mutation.
         if fs::canonicalize("/etc/resolv.conf").map_err(|_| EngineError::Network)?
             != Path::new("/run/systemd/resolve/stub-resolv.conf")
@@ -195,23 +277,40 @@ impl NetworkLease {
             .custom_flags(libc::O_NOFOLLOW)
             .open(LEASE)
             .map_err(|_| EngineError::Network)?;
-        file.write_all(JOURNAL)
+        let journal = serde_json::to_vec(&Journal {
+            version: 1,
+            kind: "moth-network".into(),
+            auxiliary_priority,
+        })
+        .map_err(|_| EngineError::Network)?;
+        file.write_all(&journal)
             .and_then(|_| file.sync_all())
             .map_err(|_| EngineError::Network)?;
         fs::File::open(RUNTIME)
             .and_then(|file| file.sync_all())
             .map_err(|_| EngineError::Network)?;
-        Ok(Self)
+        let lease = Self;
+        // Install the journaled IPv6 selector before sing-tun starts. Otherwise
+        // its nextIndex6 calculation could race activate() and choose a
+        // different priority from the one recorded above. The empty table
+        // falls through to the existing main routes until activation.
+        ip(&[
+            "-6", "rule", "add", "pref", PRIORITY, "not", "fwmark", MARK_TEXT, "table", TABLE,
+            "protocol", PROTOCOL,
+        ])?;
+        Ok(lease)
     }
     fn activate(&self) -> Result<(), EngineError> {
         for family in ["-4", "-6"] {
             ip(&[
                 family, "route", "add", "default", "dev", LINK, "table", TABLE, "proto", PROTOCOL,
             ])?;
-            ip(&[
-                family, "rule", "add", "pref", PRIORITY, "not", "fwmark", MARK_TEXT, "table",
-                TABLE, "protocol", PROTOCOL,
-            ])?;
+            if family == "-4" {
+                ip(&[
+                    family, "rule", "add", "pref", PRIORITY, "not", "fwmark", MARK_TEXT, "table",
+                    TABLE, "protocol", PROTOCOL,
+                ])?;
+            }
         }
         // Only this private link's resolver state changes. Link deletion makes
         // resolved discard it, including after SIGKILL; physical DNS stays intact.
@@ -219,6 +318,28 @@ impl NetworkLease {
         command("/usr/bin/resolvectl", &["domain", LINK, "~."])?;
         command("/usr/bin/resolvectl", &["default-route", LINK, "yes"])?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn auxiliary_rule_requires_exact_journaled_identity() {
+        let rule = serde_json::json!({"priority":20219,"src":"all","oif":"moth0","oif_detached":null,"table":"20220"});
+        assert!(owned_auxiliary(&rule, 20219));
+        for (key, value) in [
+            ("priority", serde_json::json!(20218)),
+            ("table", serde_json::json!(254)),
+            ("oif", serde_json::json!("eth0")),
+            ("src", serde_json::json!("10.0.0.0/8")),
+            ("protocol", serde_json::json!(242)),
+            ("fwmark", serde_json::json!(1)),
+        ] {
+            let mut foreign = rule.clone();
+            foreign[key] = value;
+            assert!(!owned_auxiliary(&foreign, 20219));
+        }
     }
 }
 impl Drop for NetworkLease {
@@ -304,6 +425,7 @@ impl EngineSet {
         tun_config["inbounds"][0]["interface_name"] = serde_json::json!(LINK);
         tun_config["inbounds"][0]["auto_route"] = serde_json::json!(false);
         tun_config["inbounds"][0]["strict_route"] = serde_json::json!(false);
+        tun_config["inbounds"][0]["iproute2_table_index"] = serde_json::json!(20220);
         self.validate(Engine::Xray, &config).await?;
         self.validate(Engine::SingBox, &tun_config).await?;
         let lease = NetworkLease::acquire()?;
