@@ -1,9 +1,9 @@
 # Moth Desktop — Мотылёк
 
 Windows-first desktop companion to [Moth for Android](https://github.com/Bu11t0N/Moth).
-Rust domain/platform layers and a Tauri 2 + TypeScript interface, designed for a later Linux port.
+Rust domain/platform layers and a Tauri 2 + TypeScript interface for Windows x64 and Ubuntu 24.04 x64.
 
-**0.3.3 development candidate: Windows system TUN connection. Requires the installed service. Kill switch and automatic network recovery are not implemented.**
+**0.3.3 development candidate: Windows NSIS/ZIP, Ubuntu Debian package, system VPN service and signed-update implementation. Publication and actual acceptance results are tracked in [STATUS.md](docs/STATUS.md). Kill switch and automatic reconnect are not implemented.**
 
 See the [desktop roadmap and Android feature comparison](docs/ROADMAP.ru.md)
 for the planned implementation order and acceptance criteria.
@@ -26,10 +26,14 @@ for the planned implementation order and acceptance criteria.
 - Explicit Install-Service.cmd bootstrap with Windows UAC; the GUI runs as an ordinary user.
 - Service/core version diagnostics with authenticated IPC compatibility and current service core hash checks.
 - Staged 0.3.1/0.3.2 service upgrades, startup verification, automatic failure rollback and unchanged DPAPI profiles.
+- Graphical Windows installer/uninstaller with ordinary-user shortcuts and complete GUI/service/core transactions.
+- Ubuntu 24.04 root daemon, authenticated UID IPC, systemd-resolved TUN and password-protected Secret Service storage.
+- Standard Debian packaging and native Linux tray/taskbar behavior. See [supported Linux configuration](docs/LINUX.md).
+- Signed metadata/package verification, privileged fixed-operation installation and ordinary-user update monitor. See [update architecture and release gate](docs/UPDATES.md).
 
 Unsupported URI options are rejected rather than silently discarded. HTTP subscription fetching,
 Clash/sing-box/Xray JSON imports, Android backups and other protocols are planned, not implemented.
-Linux can compile the common logic and UI but saving profiles returns an explicit unsupported error.
+Linux acceptance covers the supported systemd-resolved/Secret Service configuration; other distributions remain unaccepted.
 
 ## Develop
 
@@ -75,10 +79,12 @@ Corrupt/undecryptable storage causes an explicit startup failure and is never ov
 
 ```
 crates/moth-core/       UI-independent profiles, import and config generation
-crates/moth-platform/   Windows protected storage, platform capabilities
+crates/moth-platform/   Windows DPAPI and Linux Secret Service storage
 crates/moth-engine/     Verified core processes, config validation and server probes
-crates/moth-ipc/        Portable protocol and Windows authenticated named pipe
-crates/moth-service/    Windows SCM executable and non-privileged console test harness
+crates/moth-ipc/        Authenticated Windows pipe/Linux socket and maintenance leases
+crates/moth-service/    Windows SCM/Linux systemd daemon and bounded engine lifecycle
+crates/moth-update/     Shared signed metadata/package verification
+crates/moth-maintenance/ Fixed privileged signed-package installation
 src-tauri/             Tauri adapter and narrowly scoped IPC commands
 src/                   Local-only desktop interface
 docs/                  Specification, architecture and progress
@@ -90,7 +96,8 @@ shipping two frontends is outside the first release. No Android repository files
 
 ## Windows service installation and update
 
-The fully extracted development ZIP includes `moth-service.exe` and `Service.ps1`.
+The graphical NSIS installer installs the full GUI/service/core package with shortcuts and uninstall support. Its GUI requires Microsoft WebView2 Runtime and runs without elevation. Full graphical installation is required for in-app updates.
+The fully extracted development ZIP also includes `moth-service.exe` and `Service.ps1`.
 Run Install-Service.cmd to install or update the service and pinned engines. Disconnect VPN and close the previous GUI using tray Exit first. See [installation, automatic rollback and limitations](docs/SERVICE.md).
 SCM/network acceptance runs only on disposable Windows CI or an explicitly selected VMware clone. `-DisposableVm` checks VMware hardware before enabling the debug/test drivers. Never run these tests on a normal workstation.
 

@@ -16,7 +16,8 @@ lease or running GUI blocks package replacement. Remove using `sudo apt remove m
 User keyring profiles remain intact, including after `apt purge`; package scripts
 never traverse user homes or delete keyring items. The package manager owns program
 files; there is no AppImage or direct replacement of dpkg-owned files by an updater.
-Signed in-app updates remain separate unfinished work.
+The [signed updater](UPDATES.md) uses the same apt/dpkg transaction and a protected
+dpkg-repack backup; acceptance and publication status are recorded in STATUS.md.
 
 The GUI uses a fixed Unix socket with kernel peer authentication; connections are
 owned by the authenticated UID. The service accepts root maintenance and normal
