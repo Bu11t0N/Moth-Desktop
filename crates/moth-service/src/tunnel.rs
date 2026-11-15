@@ -66,6 +66,31 @@ impl Controller {
             result = tokio::time::timeout(Duration::from_secs(25), engines.connect(profile)) => result.ok().and_then(Result::ok),
             _ = cancelled.changed() => None,
         };
+        let result = match result {
+            Some(session) if *cancelled.borrow() => {
+                session.stop().await;
+                None
+            }
+            result => result,
+        };
+        #[cfg(target_os = "linux")]
+        if result.is_none() {
+            // A cancelled engine future drops kill-on-drop children. Wait for
+            // their link to disappear before recovering the exact rule journal;
+            // no new Connect can race this operation guard.
+            let _ = tokio::task::spawn_blocking(|| {
+                let deadline = std::time::Instant::now() + Duration::from_secs(3);
+                loop {
+                    if moth_engine::recover_network().is_ok()
+                        || std::time::Instant::now() >= deadline
+                    {
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+            })
+            .await;
+        }
         let mut state = self.inner.lock().await;
         state.cancel = None;
         match result {

@@ -141,6 +141,11 @@ fn runtime() -> Result<(), EngineError> {
 /// has been killed. Only exact journaled rules are removed; conflicts fail closed.
 pub fn recover_network() -> Result<(), EngineError> {
     runtime()?;
+    // Never clear the journal while sing-tun can still create its auxiliary
+    // rule. Cancellation kills asynchronously; the caller retries after reap.
+    if Path::new("/sys/class/net/moth0").exists() {
+        return Err(EngineError::Network);
+    }
     let file = match OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NOFOLLOW)
@@ -321,34 +326,6 @@ impl NetworkLease {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn auxiliary_rule_requires_exact_journaled_identity() {
-        let rule = serde_json::json!({"priority":20219,"src":"all","oif":"moth0","oif_detached":null,"table":"20220"});
-        assert!(owned_auxiliary(&rule, 20219));
-        for (key, value) in [
-            ("priority", serde_json::json!(20218)),
-            ("table", serde_json::json!(254)),
-            ("oif", serde_json::json!("eth0")),
-            ("src", serde_json::json!("10.0.0.0/8")),
-            ("protocol", serde_json::json!(242)),
-            ("fwmark", serde_json::json!(1)),
-        ] {
-            let mut foreign = rule.clone();
-            foreign[key] = value;
-            assert!(!owned_auxiliary(&foreign, 20219));
-        }
-    }
-}
-impl Drop for NetworkLease {
-    fn drop(&mut self) {
-        // On failure keep the journal for ExecStopPost/startup recovery.
-        let _ = recover_network();
-    }
-}
-
 pub struct Tunnel {
     tun: EngineProcess,
     upstream: EngineProcess,
@@ -493,6 +470,35 @@ impl EngineSet {
                 return Err(EngineError::Probe);
             }
             tokio::time::sleep(Duration::from_millis(250)).await;
+        }
+    }
+}
+
+impl Drop for NetworkLease {
+    fn drop(&mut self) {
+        // On failure keep the journal for ExecStopPost/startup recovery.
+        let _ = recover_network();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn auxiliary_rule_requires_exact_journaled_identity() {
+        let rule = serde_json::json!({"priority":20219,"src":"all","oif":"moth0","oif_detached":null,"table":"20220"});
+        assert!(owned_auxiliary(&rule, 20219));
+        for (key, value) in [
+            ("priority", serde_json::json!(20218)),
+            ("table", serde_json::json!(254)),
+            ("oif", serde_json::json!("eth0")),
+            ("src", serde_json::json!("10.0.0.0/8")),
+            ("protocol", serde_json::json!(242)),
+            ("fwmark", serde_json::json!(1)),
+        ] {
+            let mut foreign = rule.clone();
+            foreign[key] = value;
+            assert!(!owned_auxiliary(&foreign, 20219));
         }
     }
 }

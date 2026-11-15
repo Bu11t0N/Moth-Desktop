@@ -205,6 +205,23 @@ def main():
                             print(f"Acceptance baseline changed ({key}): before={baseline[key]!r} after={current[key]!r}",file=sys.stderr)
                     raise
 
+            # Cancel a genuine in-flight TUN startup with a rejected synthetic
+            # VLESS credential; the production HTTPS verifier cannot complete.
+            rejected_profile=f"vless://{uuid.uuid4()}@127.0.0.1:{port}?encryption=none&security=none&type=tcp".encode()
+            pending=subprocess.Popen(["runuser","-u",users[0],"--",str(root/"moth-service"),"--connect"],stdin=subprocess.PIPE,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+            children.append(pending)
+            pending.stdin.write(rejected_profile)
+            pending.stdin.close()
+            wait(lambda: Path("/sys/class/net/moth0").exists() and cli(users[0],"--tunnel-status").get("phase")=="connecting",
+                 "Real in-flight TUN startup was not observed")
+            if cli(users[1],"--disconnect").get("code")!="notOwner":
+                raise RuntimeError("Another UID cancelled startup")
+            if cli(users[0],"--disconnect").get("phase")!="disconnected":
+                raise RuntimeError("Owner cancellation was not confirmed")
+            if pending.wait(timeout=10)!=0:
+                raise RuntimeError("Cancelled connection client failed")
+            restored()
+            run(lease_example,"available")
             connected()
             run(lease_example,"blocked")
             if cli(users[1], "--disconnect").get("code") != "notOwner":
