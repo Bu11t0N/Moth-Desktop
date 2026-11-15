@@ -3,7 +3,7 @@
 Windows-first desktop companion to [Moth for Android](https://github.com/Bu11t0N/Moth).
 Rust domain/platform layers and a Tauri 2 + TypeScript interface for Windows x64 and Ubuntu 24.04 x64.
 
-**0.3.3 development candidate: Windows NSIS/ZIP, Ubuntu Debian package, system VPN service and signed-update implementation. Publication and actual acceptance results are tracked in [STATUS.md](docs/STATUS.md). Kill switch and automatic reconnect are not implemented.**
+**[0.3.3 downloads](https://github.com/Bu11t0N/Moth-Desktop/releases/tag/v0.3.3): Windows NSIS/ZIP and Ubuntu Debian package, system VPN service and signed in-app updates. [Actual acceptance and limitations](docs/STATUS.md). Kill switch and automatic reconnect are not implemented.**
 
 See the [desktop roadmap and Android feature comparison](docs/ROADMAP.ru.md)
 for the planned implementation order and acceptance criteria.

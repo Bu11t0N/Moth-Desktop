@@ -1,8 +1,9 @@
-# Signed update candidate
+# Signed updates — 0.3.3
 
-The expanded 0.3.3 candidate includes a signed-update implementation. It is not
-a released update channel: actual two-build installation/rollback acceptance and
-production release publication remain gated in [STATUS.md](STATUS.md).
+Version 0.3.3 includes signed in-app updates and published signed metadata/packages.
+Actual two-build installation/rollback/retry, ordinary-user monitor/restart and
+production publication evidence are linked in [STATUS.md](STATUS.md). Published
+0.3.1/0.3.2 clients require the manual installer to gain the updater.
 
 The Settings page checks the fixed Moth Desktop GitHub release feed. The shared
 Rust verifier accepts only bounded metadata signed by the compiled public key,
@@ -74,5 +75,7 @@ The default `publish=false` produces a verified artifact for review. Only an
 explicit manual dispatch with `publish=true` creates the versioned GitHub Release
 and tag after verification. Existing tags/releases are refused; assets are never
 overwritten by a rerun. Publication uses a draft until all assets have uploaded.
-This workflow is configured, not yet production-executed; source, acceptance and
-dependency-notice gates in STATUS.md still apply.
+[The 0.3.3 production workflow](https://github.com/Bu11t0N/Moth-Desktop/actions/runs/43748619093)
+signed and verified all packages on Windows/Linux before publication. Its accepted
+runtime source and native evidence are recorded in STATUS.md. Metadata uses a
+separate concise UTF-8 update summary; full instructions remain in RELEASE.txt.
