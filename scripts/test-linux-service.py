@@ -146,6 +146,12 @@ def main():
             fixture = work / "fixture.py"
             shutil.copyfile(__file__, fixture)
             children.append(subprocess.Popen(["ip", "netns", "exec", "moth-ci-sink", sys.executable, str(fixture), "sink"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+            # Establish that both isolated servers really started before testing
+            # VPN routing. A tunnel timeout must not conceal a dead fixture.
+            for destination in ("10.231.90.2", "fd24:4d4f:5448::2"):
+                host = f"[{destination}]" if ":" in destination else destination
+                wait(lambda: run("curl", "--fail", "--silent", "--noproxy", "*", "--max-time", "2", f"http://{host}:18080/ready", check=False).returncode == 0,
+                     "Isolated TCP fixture did not become reachable")
             root.mkdir(mode=0o755)
             root.chmod(0o755)  # Explicitly override the fixture's private umask.
             (root / "engines").mkdir(mode=0o755)
@@ -157,6 +163,7 @@ def main():
                 destination.chmod(0o755)
             shutil.copyfile(repo / "packaging/linux/moth-desktop.service", unit)
             unit.chmod(0o644)
+            run(str(root / "moth-service"), "--prepare-install")
             run("systemctl", "daemon-reload")
             server_id = str(uuid.uuid4())
             listener = socket.socket()
@@ -173,6 +180,8 @@ def main():
             baseline = snapshot()
             run("systemctl", "start", "moth-desktop.service")
             wait(lambda: cli(users[0], "--status")["systemTunnel"], "Ordinary-user authenticated daemon health failed")
+            lease_example=str(repo / "target/debug/examples/maintenance_acceptance")
+            run(lease_example,"available")
 
             def connected():
                 result = cli(users[0], "--connect", profile)
@@ -185,9 +194,11 @@ def main():
                     raise RuntimeError("Network rules, routes or physical DNS were not preserved")
 
             connected()
+            run(lease_example,"blocked")
             if cli(users[1], "--disconnect").get("code") != "notOwner":
                 raise RuntimeError("Another UID disconnected the owner's tunnel")
             for source, destination in [("172.19.0.1", "10.231.90.2"), ("fdfe:dcba:9876::1", "fd24:4d4f:5448::2")]:
+                print(f"Testing actual TUN TCP/UDP IPv{ipaddress.ip_address(source).version}", flush=True)
                 host = f"[{destination}]" if ":" in destination else destination
                 response = run("curl", "--fail", "--silent", "--noproxy", "*", "--interface", source, "--max-time", "10", "--output", "/dev/null", "--write-out", "%{http_code}", f"http://{host}:18080/actual-tun")
                 if response.stdout != b"204":
@@ -206,6 +217,7 @@ def main():
             run("resolvectl", "query", "example.com")
             cli(users[0], "--disconnect")
             restored()
+            run(lease_example,"available")
             connected()
             main_pid = run("systemctl", "show", "moth-desktop.service", "--property=MainPID", "--value").stdout.strip()
             engine_pid = run("pgrep", "-P", main_pid.decode(), "-x", "xray").stdout.strip()
@@ -248,6 +260,16 @@ def main():
             restored()
             print("Linux real UID IPC, HTTPS/DNS, TCP/UDP IPv4/IPv6 TUN, engine death, SIGKILL/restart, reconnect and network restoration passed.")
         except Exception:
+            # These commands describe only the synthetic acceptance network;
+            # never dump engine configuration or imported profile data.
+            for args in [("ip", "-s", "link", "show", "moth-ci-host"),
+                         ("ip", "-s", "link", "show", "moth0"),
+                         ("ip", "-4", "route", "get", "10.231.90.2", "from", "172.19.0.1"),
+                         ("ip", "-4", "route", "get", "10.231.90.2", "mark", "0x4d4f5448"),
+                         ("sysctl", "net.ipv4.conf.all.rp_filter", "net.ipv4.conf.moth-ci-host.rp_filter"),
+                         ("ip", "netns", "exec", "moth-ci-sink", "ss", "-ln", "sport", "=", ":18080")]:
+                diagnostic = run(*args, check=False)
+                sys.stderr.write(diagnostic.stdout.decode(errors="replace")[:3000])
             for path in ("/usr/lib/moth-desktop", "/usr/lib/moth-desktop/moth-service", "/run", "/run/user", "/run/user/23101", "/run/moth-desktop", "/run/moth-desktop/control.sock"):
                 try:
                     metadata = os.lstat(path)

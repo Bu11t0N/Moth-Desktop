@@ -31,6 +31,10 @@ pub fn main() -> Result<(), String> {
             let _lock = lock_runtime().map_err(|e| e.to_string())?;
             moth_engine::recover_network().map_err(|e| e.to_string())
         }
+        Some("--prepare-install") => {
+            require_root().map_err(|e| e.to_string())?;
+            moth_ipc::maintenance::initialize().map_err(|e| e.to_string())
+        }
         Some("--service") => {
             require_root().map_err(|e| e.to_string())?;
             runtime.block_on(async {

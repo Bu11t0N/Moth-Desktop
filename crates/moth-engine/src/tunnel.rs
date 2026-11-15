@@ -11,6 +11,7 @@ use windows_sys::Win32::{
 pub struct Tunnel {
     tun: EngineProcess,
     upstream: EngineProcess,
+    _maintenance: Option<moth_ipc::maintenance::TunnelLease>,
 }
 impl Tunnel {
     pub fn alive(&mut self) -> bool {
@@ -65,8 +66,13 @@ impl EngineSet {
     /// A successful return requires actual HTTPS sourced from the TUN address,
     /// not merely a spawned process. Startup failure/cancellation drops both jobs.
     pub async fn connect(&self, profile: &Profile) -> Result<Tunnel, EngineError> {
-        self.connect_checked(profile, "https://cp.cloudflare.com/generate_204")
-            .await
+        let lease =
+            moth_ipc::maintenance::TunnelLease::acquire().map_err(|_| EngineError::Maintenance)?;
+        let mut tunnel = self
+            .connect_checked(profile, "https://cp.cloudflare.com/generate_204")
+            .await?;
+        tunnel._maintenance = Some(lease);
+        Ok(tunnel)
     }
     async fn connect_checked(
         &self,
@@ -137,7 +143,11 @@ impl EngineSet {
         let tun = self
             .spawn_config(Engine::SingBox, &tun_config, false)
             .await?;
-        let mut session = Tunnel { tun, upstream };
+        let mut session = Tunnel {
+            tun,
+            upstream,
+            _maintenance: None,
+        };
         let client = reqwest::Client::builder()
             .no_proxy()
             .local_address(IpAddr::V4(Ipv4Addr::new(172, 19, 0, 1)))

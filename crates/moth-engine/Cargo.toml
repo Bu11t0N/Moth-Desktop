@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 moth-core = {path="../moth-core"}
+moth-ipc = {path="../moth-ipc"}
 serde.workspace = true
 serde_json.workspace = true
 uuid.workspace = true

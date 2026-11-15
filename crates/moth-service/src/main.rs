@@ -17,6 +17,7 @@ fn main() {
             println!("{}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
+        Some("--prepare-install") => moth_ipc::maintenance::initialize().map_err(|e| e.to_string()),
         Some("--check-install" | "--check-installed") => {
             let root = if std::env::args().nth(1).as_deref() == Some("--check-installed") {
                 std::env::var_os("ProgramFiles")

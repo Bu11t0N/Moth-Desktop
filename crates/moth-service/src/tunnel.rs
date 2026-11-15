@@ -35,6 +35,14 @@ impl Controller {
                 code: ErrorCode::Busy,
             };
         };
+        // Keep the same kernel lease throughout startup. The engine retains a
+        // second shared lease for the established session; an exclusive updater
+        // cannot race a new Connect or interrupt another user's active tunnel.
+        let Ok(_maintenance) = moth_ipc::maintenance::TunnelLease::acquire() else {
+            return Reply::Failure {
+                code: ErrorCode::Busy,
+            };
+        };
         let (cancel, mut cancelled) = watch::channel(false);
         {
             let mut state = self.inner.lock().await;

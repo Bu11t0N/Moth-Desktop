@@ -6,6 +6,8 @@ use zeroize::Zeroizing;
 
 #[cfg(target_os = "linux")]
 pub mod linux;
+#[cfg(any(windows, target_os = "linux"))]
+pub mod maintenance;
 #[cfg(target_os = "linux")]
 pub use linux::{service_is_stopped, ServiceClient};
 #[cfg(windows)]

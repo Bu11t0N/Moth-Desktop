@@ -175,6 +175,8 @@ if ($service) {
     }
 }
 $stage = Join-Path $env:ProgramFiles ('Moth Desktop.stage-' + [Guid]::NewGuid().ToString('N'))
+& $client --prepare-install
+if ($LASTEXITCODE -ne 0) { throw 'Protected maintenance state initialization failed; existing service was not changed.' }
 $backup = Join-Path $env:ProgramFiles ('Moth Desktop.rollback-' + [Guid]::NewGuid().ToString('N'))
 $hadRoot = Test-Path -LiteralPath $installRoot
 $registered = $false

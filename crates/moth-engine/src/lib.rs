@@ -47,6 +47,8 @@ pub enum EngineError {
     Unsupported,
     #[error("Не удалось определить исходный сетевой адаптер; отключите другой VPN")]
     Network,
+    #[error("Установка службы не готова или выполняется обновление")]
+    Maintenance,
 }
 
 #[derive(Clone, Copy)]

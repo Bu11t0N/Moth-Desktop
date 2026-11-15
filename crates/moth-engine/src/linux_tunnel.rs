@@ -232,6 +232,7 @@ pub struct Tunnel {
     tun: EngineProcess,
     upstream: EngineProcess,
     _lease: NetworkLease,
+    _maintenance: moth_ipc::maintenance::TunnelLease,
 }
 impl Tunnel {
     pub fn alive(&mut self) -> bool {
@@ -246,6 +247,8 @@ impl Tunnel {
 
 impl EngineSet {
     pub async fn connect(&self, profile: &Profile) -> Result<Tunnel, EngineError> {
+        let maintenance =
+            moth_ipc::maintenance::TunnelLease::acquire().map_err(|_| EngineError::Maintenance)?;
         let address = timeout(
             Duration::from_secs(5),
             tokio::net::lookup_host((profile.host.as_str(), profile.port)),
@@ -334,6 +337,7 @@ impl EngineSet {
             tun,
             upstream,
             _lease: lease,
+            _maintenance: maintenance,
         };
         let start = Instant::now();
         while !Path::new("/sys/class/net/moth0").exists() {

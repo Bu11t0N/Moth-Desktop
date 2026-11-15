@@ -1,6 +1,7 @@
 mod security;
 use crate::{Command, Health, IpcError, Reply, Request, Response, PIPE_NAME, SERVICE_NAME};
 pub use security::{authorize_client, create_server, current_sid, validate_installation};
+pub(crate) use security::{check_acl, check_parent_acl};
 use std::time::Duration;
 use tokio::{net::windows::named_pipe::NamedPipeClient, time::timeout};
 use windows_sys::Win32::{

@@ -1,0 +1,19 @@
+[package]
+name = "moth-update"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+base64 = "0.22"
+minisign-verify = "=0.3.0"
+semver = "1"
+sha2 = "0.10"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-native-roots"] }
+tokio = { version = "1", features = ["fs", "io-util", "time"] }
+
+[dev-dependencies]
+tempfile = "3"

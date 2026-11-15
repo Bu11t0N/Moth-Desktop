@@ -3,6 +3,7 @@ set -eu
 case "${1:-}" in
   configure|abort-upgrade|abort-remove|abort-deconfigure)
     /usr/lib/moth-desktop/moth-service --check-installed
+    /usr/lib/moth-desktop/moth-service --prepare-install
     expected=$(dpkg-query -W -f='${Version}' moth-desktop)
     [ "$(/usr/lib/moth-desktop/moth-service --version)" = "$expected" ]
     [ "$(/usr/bin/moth-desktop --version)" = "$expected" ]

@@ -41,6 +41,9 @@ try {
     $link="vless://$id@127.0.0.1:$port`?security=none&type=tcp"
     $connected=Invoke-Client '--connect' $link $Credential
     if($connected.phase -ne 'connected' -or -not $connected.ownedByCaller){throw 'Standard-user VPN did not pass real TUN HTTPS/DNS verification'}
+    $leaseExample=Join-Path $PSScriptRoot '..\target\debug\examples\maintenance_acceptance.exe'
+    & $leaseExample blocked
+    if($LASTEXITCODE -ne 0){throw 'Updater was not blocked by the actual service-owned tunnel lease'}
     $rejected=$false
     try { & (Join-Path $PSScriptRoot 'Service.ps1') -Action Install -PackageDirectory (Join-Path $PSScriptRoot '..\target\release') } catch { $rejected=$true }
     $stillConnected=Invoke-Client '--tunnel-status' '' $Credential
@@ -54,6 +57,8 @@ try {
     if($denied.kind -ne 'failure' -or $denied.code -ne 'notOwner'){throw 'Another account disconnected the tunnel'}
     $off=Invoke-Client '--disconnect' '' $Credential
     if($off.phase -ne 'disconnected'){throw 'Disconnect failed'}
+    & $leaseExample available
+    if($LASTEXITCODE -ne 0){throw 'Kernel maintenance lease was not released after disconnect'}
     $again=Invoke-Client '--connect' $link $Credential
     if($again.phase -ne 'connected'){throw 'Service reconnect failed'}
     $servicePid=(Get-CimInstance Win32_Service -Filter "Name='MothDesktopService'").ProcessId

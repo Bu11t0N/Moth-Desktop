@@ -17,5 +17,5 @@ dbus-run-session -- bash -euo pipefail -c '
   unset keyring_password
   export GNOME_KEYRING_CONTROL
   export MOTH_SECRET_SERVICE_ACCEPTANCE=1
-  cargo test -p moth-core -p moth-platform -p moth-engine -p moth-ipc -p moth-service --locked -- --include-ignored
+  cargo test -p moth-core -p moth-platform -p moth-engine -p moth-ipc -p moth-service -p moth-update --locked -- --include-ignored
 '

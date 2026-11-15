@@ -222,7 +222,7 @@ pub fn validate_installation(root: &Path) -> Result<(), IpcError> {
     }
     Ok(())
 }
-fn check_acl(path: &Path) -> Result<(), IpcError> {
+pub(crate) fn check_acl(path: &Path) -> Result<(), IpcError> {
     const WRITE_RIGHTS: u32 = 0x0002
         | 0x0004
         | 0x0010
@@ -233,6 +233,17 @@ fn check_acl(path: &Path) -> Result<(), IpcError> {
         | 0x80000
         | 0x40000000
         | 0x10000000;
+    check_acl_rights(path, WRITE_RIGHTS)
+}
+pub(crate) fn check_parent_acl(path: &Path) -> Result<(), IpcError> {
+    // ProgramData intentionally permits creating subdirectories. It must not
+    // permit untrusted deletion/replacement of our administrator-owned child.
+    check_acl_rights(
+        path,
+        0x0040 | 0x10000 | 0x40000 | 0x80000 | 0x40000000 | 0x10000000,
+    )
+}
+fn check_acl_rights(path: &Path, write_rights: u32) -> Result<(), IpcError> {
     unsafe {
         let name: Vec<u16> = path
             .as_os_str()
@@ -280,7 +291,7 @@ fn check_acl(path: &Path) -> Result<(), IpcError> {
                 return Err(IpcError::AccessDenied);
             }
             let ace = &*(ptr as *const ACCESS_ALLOWED_ACE);
-            if ace.Mask & WRITE_RIGHTS != 0 {
+            if ace.Mask & write_rights != 0 {
                 let sid = sid_text((&ace.SidStart as *const u32).cast_mut().cast())?;
                 if !matches!(sid.as_str(), "S-1-5-18" | "S-1-5-32-544") {
                     return Err(IpcError::AccessDenied);
