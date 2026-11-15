@@ -118,7 +118,9 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
         id: linux_lint
       - name: Real Linux daemon, UID ownership, TUN and crash restoration
-        run: sudo --preserve-env=GITHUB_ACTIONS,RUNNER_OS python3 scripts/test-linux-service.py
+        run: |
+          sudo --preserve-env=GITHUB_ACTIONS,RUNNER_OS python3 scripts/prepare-linux-ci.py
+          sudo --preserve-env=GITHUB_ACTIONS,RUNNER_OS python3 scripts/test-linux-service.py
       - name: Build sanitized Linux Debian package
         id: linux-package
         if: ${{ !cancelled() && steps.native_build.outcome == 'success' && steps.linux_lint.outcome == 'success' }}
@@ -181,4 +183,6 @@ jobs:
       - name: Native desktop, encrypted keyring and package tooling
         run: sudo apt-get update && sudo apt-get install -y gnome-keyring dbus-x11 libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf xvfb xfwm4 dpkg-repack pkexec
       - name: Real two-build signed apt updates, rejection, rollback and ordinary-user restart
-        run: python3 scripts/test-signed-updates.py
+        run: |
+          sudo --preserve-env=GITHUB_ACTIONS,RUNNER_OS python3 scripts/prepare-linux-ci.py
+          python3 scripts/test-signed-updates.py
