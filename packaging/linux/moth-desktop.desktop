@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Moth Desktop
+Comment=VPN client
+Exec=moth-desktop
+Icon=moth-desktop
+Terminal=false
+Categories=Network;Utility;
+StartupWMClass=moth-desktop

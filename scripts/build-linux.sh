@@ -38,5 +38,6 @@ fi
 mapfile -t packages < <(find target/release/bundle/deb -maxdepth 1 -type f -name "*_${version}_amd64.deb")
 [[ ${#packages[@]} == 1 ]]
 cp -- "${packages[0]}" "$package"
+python3 scripts/check-linux-package.py "$package"
 (cd "$destination" && sha256sum "Moth-$version-linux-x64.deb" >"Moth-$version-linux-x64.deb.sha256")
 echo "Linux package: $package"
