@@ -172,7 +172,9 @@ def main():
             listener.close()
             config = {"log": {"loglevel": "none"},
                       "inbounds": [{"listen": "127.0.0.1", "port": port, "protocol": "vless", "settings": {"decryption": "none", "clients": [{"id": server_id}]}}],
-                      "outbounds": [{"protocol": "freedom", "settings": {}, "streamSettings": {"sockopt": {"mark": 0x4D4F5448}}}]}
+                      # Xray's built-in VLESS egress policy blocks private IPs.
+                      # Permit only this isolated synthetic TCP/UDP destination.
+                      "outbounds": [{"protocol": "freedom", "settings": {"finalRules": [{"action": "allow", "ip": ["10.231.90.2/32", "fd24:4d4f:5448::2/128"], "port": "18080-18081"}]}, "streamSettings": {"sockopt": {"mark": 0x4D4F5448}}}]}
             config_path = work / "server.json"
             config_path.write_text(json.dumps(config))
             children.append(subprocess.Popen([str(root / "engines/xray"), "run", "-config", str(config_path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))

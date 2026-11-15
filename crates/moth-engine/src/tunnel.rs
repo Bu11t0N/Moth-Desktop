@@ -236,7 +236,11 @@ mod acceptance {
             .await
             .unwrap();
         let udp_endpoint = tokio::spawn(async move {
-            let mut buffer = [0; 64];
+            // DNS-over-HTTPS/QUIC probes can also reach the redirected fixture.
+            // Receive a complete UDP datagram; only the exact fixture payload
+            // below receives an echo. A larger unrelated packet must not kill
+            // this task with WSAEMSGSIZE before the UDP assertions run.
+            let mut buffer = [0; 65536];
             loop {
                 let (n, peer) = udp.recv_from(&mut buffer).await.unwrap();
                 if &buffer[..n] == b"moth-tun-fixture" {
