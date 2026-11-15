@@ -2,7 +2,7 @@ use crate::IpcError;
 use std::{
     fs::{self, File, OpenOptions},
     os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 pub(super) fn directory() -> Result<PathBuf, IpcError> {
@@ -15,6 +15,38 @@ fn root() -> Result<(), IpcError> {
     } else {
         Err(IpcError::AccessDenied)
     }
+}
+pub(super) fn validate_path(path: &Path) -> Result<(), IpcError> {
+    let metadata = fs::symlink_metadata(path).map_err(|_| IpcError::Unavailable)?;
+    if metadata.uid() != 0 || metadata.mode() & 0o022 != 0 || metadata.file_type().is_symlink() {
+        return Err(IpcError::UntrustedPeer);
+    }
+    Ok(())
+}
+pub(super) fn create_directory(path: &Path) -> Result<(), IpcError> {
+    root()?;
+    validate_path(path.parent().ok_or(IpcError::UntrustedPeer)?)?;
+    fs::DirBuilder::new()
+        .mode(0o755)
+        .create(path)
+        .map_err(|_| IpcError::AccessDenied)?;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o755))
+        .map_err(|_| IpcError::AccessDenied)?;
+    validate_path(path)
+}
+pub(super) fn create_file(path: &Path) -> Result<File, IpcError> {
+    root()?;
+    validate_path(path.parent().ok_or(IpcError::UntrustedPeer)?)?;
+    let file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o644)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(path)
+        .map_err(|_| IpcError::AccessDenied)?;
+    file.set_permissions(fs::Permissions::from_mode(0o644))
+        .map_err(|_| IpcError::AccessDenied)?;
+    Ok(file)
 }
 fn validate_directory() -> Result<(), IpcError> {
     for path in ["/", "/var", "/var/lib", "/var/lib/moth-desktop"] {

@@ -66,6 +66,7 @@ def main():
                     if run("/usr/bin/moth-desktop", "--version").stdout.decode().strip() != version:
                         raise RuntimeError("Installed GUI version mismatch")
                     run("/usr/lib/moth-desktop/moth-service", "--check-installed")
+                    run(sys.executable,str(repo / "scripts/test-update-rejection.py"),"/usr/lib/moth-desktop/moth-maintenance","/var/lib/moth-desktop")
                     health = run("runuser", "-u", user, "--", "/usr/lib/moth-desktop/moth-service", "--status")
                     import json
                     if not json.loads(health.stdout)["systemTunnel"]:

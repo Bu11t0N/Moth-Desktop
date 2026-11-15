@@ -15,9 +15,14 @@ moth-core = { path = "../crates/moth-core" }
 moth-platform = { path = "../crates/moth-platform" }
 moth-engine = { path = "../crates/moth-engine" }
 moth-ipc = {path="../crates/moth-ipc"}
+moth-update = {path="../crates/moth-update"}
 tokio = {version="1",features= ["sync", "time"] }
 serde.workspace = true
+serde_json.workspace = true
 uuid.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Com", "Win32_System_Registry", "Win32_UI_Shell"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 zbus = { version = "5", default-features = false, features = ["async-io"] }

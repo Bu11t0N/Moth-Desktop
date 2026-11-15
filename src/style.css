@@ -770,3 +770,7 @@ textarea::placeholder {
     backdrop-filter: none;
   }
 }
+.update-monitor { max-width: 740px; margin: 48px auto; padding: 24px; }
+.update-notes { white-space: pre-wrap; overflow-wrap: anywhere; }
+.update-card progress { width: 100%; }
+.update-card .button { margin: 6px 8px 0 0; }

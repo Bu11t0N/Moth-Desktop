@@ -2280,12 +2280,15 @@ dependencies = [
  "moth-engine",
  "moth-ipc",
  "moth-platform",
+ "moth-update",
  "serde",
+ "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-single-instance",
  "tokio",
  "uuid",
+ "windows-sys 0.61.2",
  "zbus",
 ]
 
@@ -2320,6 +2323,18 @@ dependencies = [
  "uuid",
  "windows-sys 0.61.2",
  "zeroize",
+]
+
+[[package]]
+name = "moth-maintenance"
+version = "0.3.3"
+dependencies = [
+ "libc",
+ "moth-ipc",
+ "moth-update",
+ "serde_json",
+ "uuid",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

@@ -14,13 +14,13 @@ flags=("--remap-path-prefix=$HOME=/build/home" "--remap-path-prefix=$repo=/moth"
        "--remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=/cargo" "--remap-path-prefix=${RUSTUP_HOME:-$HOME/.rustup}=/rustup")
 export CARGO_ENCODED_RUSTFLAGS
 CARGO_ENCODED_RUSTFLAGS=$(IFS=$'\x1f'; echo "${flags[*]}")
-cargo build -p moth-service --release --locked
+cargo build -p moth-service -p moth-maintenance --release --locked
 npm run desktop:build -- --bundles deb
 python3 - "$repo" <<'PY'
 from pathlib import Path
 import os, sys
 root=Path(sys.argv[1])
-for name in ('moth-service','moth-desktop'):
+for name in ('moth-service','moth-desktop','moth-maintenance'):
     data=(root/'target/release'/name).read_bytes()
     assert data[:4] == b'\x7fELF', 'Expected an ELF binary'
     for private in (str(root),os.environ['HOME'],os.environ.get('CARGO_HOME',''),os.environ.get('RUSTUP_HOME','')):

@@ -77,7 +77,7 @@ where
     }
 }
 
-async fn stop_owned() -> Result<(), IpcError> {
+pub(crate) async fn stop_owned() -> Result<(), IpcError> {
     match stop_owned_with(service_call).await {
         #[cfg(any(windows, target_os = "linux"))]
         Err(IpcError::Unavailable) if matches!(moth_ipc::service_is_stopped(), Ok(true)) => Ok(()),

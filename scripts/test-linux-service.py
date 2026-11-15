@@ -282,7 +282,8 @@ def main():
                     for name in ("gui.log", "panel.log", "window-manager.log", "native-tray-result.json"):
                         path = evidence / name
                         if path.exists():
-                            sys.stderr.write(path.read_text(errors="replace")[-3000:])
+                            contents=path.read_text(errors="replace")
+                            sys.stderr.write(contents[:1500]+("\n...\n" if len(contents)>3000 else "")+contents[-1500:])
                     raise
                 restored()
             run("systemctl", "stop", "moth-desktop.service")

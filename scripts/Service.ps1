@@ -87,11 +87,11 @@ function Read-Payload([string]$Directory, [string]$Name) {
     foreach ($entry in $manifest.files) {
         $relative = [string]$entry.path
         # Fixed executable names and notice files only; no arbitrary destination paths.
-        if ($relative -notmatch '^(moth-desktop\.exe|moth-service\.exe|Service\.ps1|Uninstall\.exe|README\.txt|engines/(xray|sing-box)\.exe|notices/[A-Za-z0-9_./-]+)$' -or
+        if ($relative -notmatch '^(moth-desktop\.exe|moth-service\.exe|moth-maintenance\.exe|Service\.ps1|Uninstall\.exe|README\.txt|engines/(xray|sing-box)\.exe|notices/[A-Za-z0-9_./-]+)$' -or
             $relative.Contains('..') -or $entry.sha256 -notmatch '^[a-f0-9]{64}$' -or $seen.ContainsKey($relative)) { throw 'Invalid desktop package entry.' }
         $seen[$relative] = $true
     }
-    foreach ($required in @('moth-desktop.exe','moth-service.exe','Service.ps1','engines/xray.exe','engines/sing-box.exe')) {
+    foreach ($required in @('moth-desktop.exe','moth-service.exe','moth-maintenance.exe','Service.ps1','engines/xray.exe','engines/sing-box.exe')) {
         if (-not $seen.ContainsKey($required)) { throw 'Desktop package is incomplete.' }
     }
     return $manifest
@@ -102,6 +102,11 @@ if ($Action -eq 'Status') {
 }
 $principal = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Run this explicit installation/removal action in an elevated PowerShell window.' }
+$installationMutex = [Threading.Mutex]::new($false,'Global\MothDesktopPackageTransaction')
+$ownsMutex = $false
+try { $ownsMutex = $installationMutex.WaitOne(0) } catch [Threading.AbandonedMutexException] { $ownsMutex = $true }
+if (-not $ownsMutex) { $installationMutex.Dispose(); throw 'Another Moth installation or removal is already running.' }
+try {
 Assert-PlainTree $installRoot
 if ($InstallDesktop) { Assert-DesktopClosed }
 $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
@@ -167,7 +172,8 @@ if ($service) {
     try {
         if (-not $wasRunning) { Start-Moth }
         $oldHealth = Read-Health $client
-        if ($oldHealth.version -notin @('0.3.1','0.3.2','0.3.3')) { throw 'Existing service version is outside the supported upgrade range.' }
+        $oldVersion = $null
+        if (-not [Version]::TryParse($oldHealth.version,[ref]$oldVersion) -or $oldVersion -lt [Version]'0.3.1' -or $oldVersion -gt [Version]$expectedVersion) { throw 'Existing service version is outside the supported upgrade range.' }
         $tunnel = (& $client --tunnel-status) | ConvertFrom-Json
         if ($LASTEXITCODE -ne 0 -or $tunnel.kind -ne 'tunnel' -or $tunnel.phase -notin @('disconnected','failed')) { throw 'Disconnect VPN before upgrading the service (including other accounts).' }
     } finally {
@@ -222,6 +228,10 @@ try {
     Start-Moth
     $health = Read-Health $client
     if ($health.version -ne $expectedVersion) { throw 'Started service version mismatch.' }
+    if ($InstallDesktop) {
+        $updater = Start-Process -FilePath (Join-Path $installRoot 'moth-maintenance.exe') -ArgumentList '--install' -WindowStyle Hidden -Wait -PassThru
+        if ($updater.ExitCode -ne 0) { throw 'Protected updater installation failed.' }
+    }
     Write-Output 'Service installation/update verified. User profiles were not modified.'
     if ($movedOld) { Write-Output "Previous installation retained: $backup" }
 } catch {
@@ -245,4 +255,8 @@ try {
         }
     } catch { throw 'Update failed and automatic recovery could not be verified. Previous files were preserved. Keep VPN disconnected and review the service installation.' }
     throw $failure
+}
+} finally {
+    if ($ownsMutex) { $installationMutex.ReleaseMutex() }
+    $installationMutex.Dispose()
 }

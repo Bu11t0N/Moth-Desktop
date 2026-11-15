@@ -7,6 +7,8 @@ case "${1:-}" in
     expected=$(dpkg-query -W -f='${Version}' moth-desktop)
     [ "$(/usr/lib/moth-desktop/moth-service --version)" = "$expected" ]
     [ "$(/usr/bin/moth-desktop --version)" = "$expected" ]
+    [ "$(/usr/lib/moth-desktop/moth-maintenance --version)" = "$expected" ]
+    /usr/lib/moth-desktop/moth-maintenance --install
     systemctl daemon-reload
     deb-systemd-helper unmask moth-desktop.service >/dev/null
     if deb-systemd-helper --quiet was-enabled moth-desktop.service; then

@@ -1,7 +1,10 @@
 //! A fixed root-owned kernel lease coordinates service connections and package
 //! maintenance without adding a privileged command interpreter to IPC.
 use crate::IpcError;
-use std::{fs::File, path::PathBuf};
+use std::{
+    fs::File,
+    path::{Path, PathBuf},
+};
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(windows)]
@@ -17,6 +20,18 @@ pub fn state_directory() -> Result<PathBuf, IpcError> {
 /// Explicit elevated installation only; service Connect never creates state.
 pub fn initialize() -> Result<(), IpcError> {
     platform::initialize()
+}
+
+/// Fixed-path maintenance tools use this only for descendants of state_directory.
+/// The existing parent must be administrator/root owned and non-writable by users.
+pub fn create_protected_directory(path: &Path) -> Result<(), IpcError> {
+    platform::create_directory(path)
+}
+pub fn create_protected_file(path: &Path) -> Result<File, IpcError> {
+    platform::create_file(path)
+}
+pub fn validate_protected_path(path: &Path) -> Result<(), IpcError> {
+    platform::validate_path(path)
 }
 
 pub struct TunnelLease {

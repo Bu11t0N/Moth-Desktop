@@ -11,7 +11,7 @@ $package=Join-Path $output $name
 $zip=Join-Path $output "$name.zip"
 if((Test-Path -LiteralPath $package) -or (Test-Path -LiteralPath $zip)){throw 'Release output already exists; preserve published versions.'}
 New-Item -ItemType Directory -Path $package | Out-Null
-foreach($file in @('moth-desktop.exe','moth-service.exe')){
+foreach($file in @('moth-desktop.exe','moth-service.exe','moth-maintenance.exe')){
     Copy-Item -LiteralPath (Join-Path $BuildDirectory $file) -Destination $package
 }
 foreach($directory in @('engines','notices')){

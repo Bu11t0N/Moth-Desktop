@@ -94,6 +94,45 @@ fn attributes(sddl: &str) -> Result<(Local, SECURITY_ATTRIBUTES), IpcError> {
         Ok((Local(descriptor), attributes))
     }
 }
+pub(super) fn validate_path(path: &Path) -> Result<(), IpcError> {
+    let metadata = std::fs::symlink_metadata(path).map_err(|_| IpcError::Unavailable)?;
+    if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+        return Err(IpcError::UntrustedPeer);
+    }
+    crate::windows::check_acl(path)
+}
+pub(super) fn create_directory(path: &Path) -> Result<(), IpcError> {
+    admin()?;
+    validate_path(path.parent().ok_or(IpcError::UntrustedPeer)?)?;
+    let (_memory, attributes) =
+        attributes("O:BAG:BAD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FRFX;;;BU)")?;
+    unsafe {
+        if CreateDirectoryW(wide(path).as_ptr(), &attributes) == 0 {
+            return Err(IpcError::AccessDenied);
+        }
+    }
+    validate_path(path)
+}
+pub(super) fn create_file(path: &Path) -> Result<File, IpcError> {
+    admin()?;
+    validate_path(path.parent().ok_or(IpcError::UntrustedPeer)?)?;
+    let (_memory, attributes) = attributes("O:BAG:BAD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FRFX;;;BU)")?;
+    unsafe {
+        let handle = CreateFileW(
+            wide(path).as_ptr(),
+            FILE_GENERIC_WRITE,
+            0,
+            &attributes,
+            CREATE_NEW,
+            FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT,
+            std::ptr::null_mut(),
+        );
+        if handle == INVALID_HANDLE_VALUE {
+            return Err(IpcError::AccessDenied);
+        }
+        Ok(File::from_raw_handle(handle.cast()))
+    }
+}
 pub(super) fn initialize() -> Result<(), IpcError> {
     admin()?;
     let directory = directory()?;

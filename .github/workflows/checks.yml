@@ -111,22 +111,28 @@ jobs:
       - run: cargo build -p moth-ipc --example maintenance_acceptance --locked
       - run: npm ci
       - name: Build actual GTK and WebKit native acceptance GUI
+        id: native_build
         run: npm run desktop:build -- --debug --no-bundle
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+        id: linux_lint
       - name: Real Linux daemon, UID ownership, TUN and crash restoration
         run: sudo --preserve-env=GITHUB_ACTIONS,RUNNER_OS python3 scripts/test-linux-service.py
       - name: Build sanitized Linux Debian package
         id: linux-package
+        if: ${{ !cancelled() && steps.native_build.outcome == 'success' && steps.linux_lint.outcome == 'success' }}
         run: |
           artifacts=$(mktemp -d "$RUNNER_TEMP/moth-linux-artifacts-XXXXXXXX")
           bash scripts/build-linux.sh "$artifacts"
           echo "directory=$artifacts" >> "$GITHUB_OUTPUT"
           echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
       - name: Actual apt install, remove, reinstall and keyring preservation
+        id: package_acceptance
+        if: ${{ !cancelled() && steps.linux-package.outcome == 'success' }}
         run: |
           cargo build -p moth-platform --example storage_acceptance --locked
           sudo --preserve-env=GITHUB_ACTIONS,RUNNER_OS python3 scripts/test-linux-package.py '${{ steps.linux-package.outputs.directory }}/Moth-${{ steps.linux-package.outputs.version }}-linux-x64.deb'
       - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() && steps.package_acceptance.outcome == 'success' }}
         with:
           name: Moth-${{ steps.linux-package.outputs.version }}-linux-x64
           path: |

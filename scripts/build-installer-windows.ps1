@@ -19,7 +19,7 @@ if ($LASTEXITCODE -ne 0 -or $nsisVersion.Trim() -ne 'v3.11') { throw 'NSIS 3.11 
 # Build a separate minimal payload; never package a Cargo target tree.
 $payload=Join-Path $output ('nsis-payload-'+[Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $payload | Out-Null
-foreach ($name in @('moth-desktop.exe','moth-service.exe','README.txt')) { Copy-Item -LiteralPath (Join-Path $package $name) -Destination $payload }
+foreach ($name in @('moth-desktop.exe','moth-service.exe','moth-maintenance.exe','README.txt')) { Copy-Item -LiteralPath (Join-Path $package $name) -Destination $payload }
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Service.ps1') -Destination $payload
 foreach ($name in @('engines','notices')) { Copy-Item -LiteralPath (Join-Path $package $name) -Destination $payload -Recurse }
 $serviceVersion=& (Join-Path $payload 'moth-service.exe') --version

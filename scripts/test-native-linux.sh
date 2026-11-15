@@ -12,7 +12,12 @@ export XDG_DATA_HOME="$evidence/data"
 export MOTH_DEV_DATA_DIR="$evidence"
 export MOTH_NATIVE_TRAY_TEST=1
 export LIBGL_ALWAYS_SOFTWARE=1
+export XDG_CURRENT_DESKTOP=XFCE
+export XDG_SESSION_TYPE=x11
 mkdir -p "$XDG_CONFIG_HOME/xfce4/xfconf/xfce-perchannel-xml" "$XDG_DATA_HOME"
+# The private bus was started before xvfb-run and these isolated XDG paths.
+# Activated XFCE daemons must receive this session's display/configuration.
+dbus-update-activation-environment DISPLAY XAUTHORITY XDG_CONFIG_HOME XDG_DATA_HOME XDG_RUNTIME_DIR XDG_CURRENT_DESKTOP XDG_SESSION_TYPE
 keyring_password=$(openssl rand -base64 32)
 eval "$(printf '%s' "$keyring_password" | gnome-keyring-daemon --unlock --components=secrets)"
 unset keyring_password
@@ -38,6 +43,20 @@ if [[ "$mode" == tray ]]; then
 XML
   xfce4-panel --disable-wm-check >"$evidence/panel.log" 2>&1 &
   panel_pid=$!
+  # Confirm the actual watcher before launching the application; an absent
+  # desktop host must fail the fixture rather than masquerade as an app bug.
+  ready=false
+  for attempt in $(seq 1 100); do
+    if gdbus call --session --dest org.kde.StatusNotifierWatcher --object-path /StatusNotifierWatcher --method org.freedesktop.DBus.Properties.Get org.kde.StatusNotifierWatcher IsStatusNotifierHostRegistered 2>/dev/null | grep -q true; then ready=true; break; fi
+    sleep 0.1
+  done
+  if [[ "$ready" != true ]]; then
+    xfconf-query --channel xfce4-panel --list >&2 || true
+    gdbus call --session --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus --method org.freedesktop.DBus.ListNames >&2 || true
+    head -c 2000 "$evidence/panel.log" >&2 || true
+    echo 'The actual XFCE StatusNotifier host did not register.' >&2
+    exit 1
+  fi
 else
   export MOTH_NATIVE_NO_TRAY=1
 fi

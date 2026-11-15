@@ -8,6 +8,7 @@ use uuid::Uuid;
 #[cfg(all(any(windows, target_os = "linux"), debug_assertions))]
 mod native_acceptance;
 mod tray;
+mod updater;
 
 struct AppState {
     store: ProfileStore,
@@ -212,7 +213,24 @@ fn main() {
         println!("{}", env!("CARGO_PKG_VERSION"));
         return;
     }
+    let monitor = match updater::monitor_argument() {
+        Ok(value) => value,
+        Err(_) => std::process::exit(1),
+    };
+    if monitor.is_some() {
+        tauri::Builder::default()
+            .manage(updater::state(monitor))
+            .invoke_handler(tauri::generate_handler![
+                updater::update_monitor_mode,
+                updater::update_status,
+                updater::restart_updated_app
+            ])
+            .run(tauri::generate_context!())
+            .expect("Не удалось открыть окно установки");
+        return;
+    }
     tauri::Builder::default()
+        .manage(updater::state(None))
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             tray::show_main(app)
         }))
@@ -255,7 +273,13 @@ fn main() {
             tunnel_status,
             connect_vpn,
             disconnect_vpn,
-            quit_app
+            quit_app,
+            updater::update_monitor_mode,
+            updater::update_status,
+            updater::check_updates,
+            updater::download_update,
+            updater::install_update,
+            updater::restart_updated_app
         ])
         .build(tauri::generate_context!())
         .expect("Не удалось запустить Moth Desktop")

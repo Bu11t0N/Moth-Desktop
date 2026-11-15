@@ -93,6 +93,10 @@ Run-Installer $faultInstaller $false
 if ((Get-Service MothDesktopService -ErrorAction SilentlyContinue) -or (Test-Path -LiteralPath $root) -or (Test-Path -LiteralPath $registry)) { throw 'Failed clean installation did not restore absence.' }
 Run-Installer $installerPath
 Check-Installed
+$updater=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'Moth Desktop/maintenance/0.3.3/moth-maintenance.exe'
+python (Join-Path $PSScriptRoot 'test-update-rejection.py') $updater (Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'Moth Desktop')
+if ($LASTEXITCODE -ne 0) { throw 'Installed privileged updater unsigned-input refusal failed.' }
+Check-Installed
 $guiHash=(Get-FileHash -LiteralPath (Join-Path $root 'moth-desktop.exe')).Hash
 $uninstallerHash=(Get-FileHash -LiteralPath (Join-Path $root 'Uninstall.exe')).Hash
 foreach ($running in @($true,$false)) {

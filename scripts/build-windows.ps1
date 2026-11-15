@@ -22,12 +22,12 @@ try {
     $env:CARGO_TARGET_DIR=$target
     Push-Location $repo
     try {
-        cargo build -p moth-service --release --locked
+        cargo build -p moth-service -p moth-maintenance --release --locked
         if($LASTEXITCODE -ne 0){throw 'Service release build failed.'}
         npm.cmd run desktop:build -- --no-bundle
         if($LASTEXITCODE -ne 0){throw 'Desktop release build failed.'}
     } finally {Pop-Location}
-    foreach($name in @('moth-desktop.exe','moth-service.exe')){
+    foreach($name in @('moth-desktop.exe','moth-service.exe','moth-maintenance.exe')){
         $bytes=[IO.File]::ReadAllBytes((Join-Path $target "release/$name"))
         foreach($encoding in @([Text.Encoding]::UTF8,[Text.Encoding]::Unicode)){
             $text=$encoding.GetString($bytes)

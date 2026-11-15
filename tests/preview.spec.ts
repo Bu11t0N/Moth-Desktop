@@ -1,5 +1,28 @@
 import { test, expect } from "@playwright/test";
 
+test("updater renders signed metadata as text and offers no installation after signature failure",async ({page})=>{
+  await page.addInitScript(()=>{
+    const target=window as unknown as {isTauri:boolean;__TAURI_INTERNALS__:unknown};
+    target.isTauri=true;
+    target.__TAURI_INTERNALS__={invoke:async(command:string)=>{
+      if(command==="update_monitor_mode")return false;
+      if(command==="check_updates")return {phase:"available",update:{version:"0.3.4",notes:"<img src=x onerror=alert(1)>",file:"fixture",size:64},downloaded:0,total:64,error:null};
+      if(command==="download_update")throw "Подпись обновления не прошла проверку";
+      if(command==="tunnel_status")return {phase:"disconnected",ownedByCaller:false,error:null};
+      return {profiles:[],selected:null,version:"0.3.3",engines:[],capabilities:{platform:"windows",secureStorage:true,systemTunnel:true,killSwitch:false}};
+    }};
+  });
+  await page.goto("/");
+  await page.getByRole("button",{name:"Настройки",exact:true}).click();
+  await page.getByRole("button",{name:"Проверить обновления",exact:true}).click();
+  await expect(page.getByText("<img src=x onerror=alert(1)>",{exact:true})).toBeVisible();
+  await expect(page.locator(".update-card img")).toHaveCount(0);
+  await page.getByRole("button",{name:"Скачать обновление",exact:true}).click();
+  await expect(page.getByRole("alert")).toContainText("Подпись обновления не прошла проверку");
+  await expect(page.getByRole("button",{name:"Установить обновление",exact:true})).toHaveCount(0);
+  await expect(page.getByRole("button",{name:"Подключить",exact:true})).toHaveCount(0);
+});
+
 test("preview never claims protection; navigation and import failure are honest", async ({
   page,
 }) => {
@@ -212,7 +235,7 @@ test("authenticated service health is separate from VPN protection", async ({
   await page
     .getByRole("button", { name: "Проверить связь со службой", exact: true })
     .click();
-  await expect(page.getByRole("status")).toContainText(
+  await expect(page.getByRole("status", { name: "Состояние службы" })).toContainText(
     "Связь установлена · 0.3.3",
   );
   await expect(page.getByText("Совместим · IPC 2")).toBeVisible();
@@ -422,7 +445,7 @@ test("diagnostics support IPC 2 service 0.3.1 and clear stale health after failu
     exact: true,
   });
   await refresh.click();
-  await expect(page.getByRole("status")).toContainText(
+  await expect(page.getByRole("status", { name: "Состояние службы" })).toContainText(
     "Связь установлена · 0.3.1",
   );
   await expect(
@@ -430,7 +453,7 @@ test("diagnostics support IPC 2 service 0.3.1 and clear stale health after failu
   ).toBeVisible();
   await expect(page.getByText("1.12.25 · Проверено")).toBeVisible();
   await refresh.click();
-  await expect(page.getByRole("status")).toContainText("Служба недоступна");
+  await expect(page.getByRole("status", { name: "Состояние службы" })).toContainText("Служба недоступна");
   await expect(page.getByText("Ядро службы: sing-box")).toHaveCount(0);
   await expect(page.getByText("Не подтверждён", { exact: true })).toBeVisible();
 });
@@ -506,7 +529,7 @@ for (const delayedHealth of [false, true]) {
       exact: true,
     });
     await refresh.click();
-    await expect(page.getByRole("status")).toContainText(
+    await expect(page.getByRole("status", { name: "Состояние службы" })).toContainText(
       "Связь установлена · 0.3.1",
     );
     await expect(page.getByText("Ядро службы: sing-box")).toBeVisible();
@@ -519,7 +542,7 @@ for (const delayedHealth of [false, true]) {
     await page.evaluate(() =>
       (window as unknown as { loseService: () => void }).loseService(),
     );
-    await expect(page.getByRole("status")).toHaveText("Служба недоступна");
+    await expect(page.getByRole("status", { name: "Состояние службы" })).toHaveText("Служба недоступна");
     await expect(
       page.getByText("Связь установлена", { exact: false }),
     ).toHaveCount(0);
@@ -541,7 +564,7 @@ for (const delayedHealth of [false, true]) {
           (window as unknown as { oldHealthReturned: boolean })
             .oldHealthReturned,
       );
-      await expect(page.getByRole("status")).toHaveText("Служба недоступна");
+      await expect(page.getByRole("status", { name: "Состояние службы" })).toHaveText("Служба недоступна");
       await expect(
         page.getByText("Связь установлена", { exact: false }),
       ).toHaveCount(0);

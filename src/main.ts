@@ -1,5 +1,6 @@
 import "./style.css";
 import { listen } from "@tauri-apps/api/event";
+import { updateMonitor, updateCard, bindUpdates, startUpdater } from "./updater";
 import {
   call,
   exitApp,
@@ -62,6 +63,11 @@ export const escapeHtml = (text: string) =>
   );
 
 function render() {
+  if (updateMonitor) {
+    app.innerHTML = `<main class="update-monitor"><h1>Moth</h1>${updateCard()}</main>`;
+    bindUpdates(app);
+    return;
+  }
   const linux = state.capabilities.platform === "linux";
   const installationHint = linux
     ? "Установите пакет Moth .deb. Перед обновлением отключите VPN и выйдите из приложения."
@@ -121,7 +127,7 @@ function render() {
     `
           : `<div class="page-heading"><div><p class="eyebrow">ПАРАМЕТРЫ</p><h1>Настройки</h1><p class="muted">Состояние этой сборки и доступные возможности</p></div></div>
       <article class="settings-card"><h2>Приложение</h2><div class="setting"><span>Версия</span><strong>${escapeHtml(state.version)} · Preview</strong></div><div class="setting"><span>Платформа</span><strong>${escapeHtml(state.capabilities.platform)}</strong></div><div class="setting"><span>Защищённое хранилище</span><strong>${state.capabilities.secureStorage ? (linux ? "Secret Service" : "Windows DPAPI") : "Недоступно в этом режиме"}</strong></div><div class="setting"><span>Системный VPN</span><strong>${state.capabilities.systemTunnel && serviceAvailable && serviceHealth?.protocol === 2 && serviceHealth.systemTunnel && serviceHealth.engines.length > 0 && serviceHealth.engines.every((e) => e.available) ? "Доступен через службу" : "Не подтверждён"}</strong></div><div class="setting"><span>Kill switch</span><strong>${state.capabilities.killSwitch ? "Доступен" : "Не реализован"}</strong></div></article>
-      <article class="settings-card"><h2>Служба VPN</h2><p class="muted" role="status">${escapeHtml(serviceMessage)}</p>${serviceHealth ? `<div class="setting"><span>Протокол управления</span><strong>${serviceHealth.protocol === 2 ? "Совместим · IPC 2" : "Несовместим"}</strong></div>${serviceHealth.engines.map((e) => `<div class="setting"><span>Ядро службы: ${escapeHtml(e.name)}</span><strong>${escapeHtml(e.version)} · ${e.available ? "Проверено" : "Недоступно"}</strong></div>`).join("")}` : ""}<button class="button subtle service-refresh" ${serviceChecking ? "disabled" : ""}>${serviceChecking ? "Проверяем…" : "Проверить связь со службой"}</button><p class="muted">Для VPN нужна служба Moth с протоколом IPC 2 (0.3.1–0.3.3). ${installationHint}</p></article><article class="settings-card"><h2>Ядра приложения</h2>${(state.engines || []).map((e) => `<div class="setting"><span>${escapeHtml(e.name)} ${escapeHtml(e.version)}</span><strong>${e.available ? "Хэш проверен при запуске" : escapeHtml(e.message || "Недоступен")}</strong></div>`).join("")}<p class="muted">HTTPS-проверка проходит через выбранный сервер. Её результат — не ICMP ping и не признак включённого системного VPN.</p></article><article class="settings-card"><h2>Ограничения</h2><p class="muted">После смены сети подключись заново. Kill switch и автоматическое восстановление после сна ещё разрабатываются. При сбое ядра туннель отключается, система возвращается к обычной сети.</p></article>`
+      <article class="settings-card"><h2>Служба VPN</h2><p class="muted" role="status" aria-label="Состояние службы">${escapeHtml(serviceMessage)}</p>${serviceHealth ? `<div class="setting"><span>Протокол управления</span><strong>${serviceHealth.protocol === 2 ? "Совместим · IPC 2" : "Несовместим"}</strong></div>${serviceHealth.engines.map((e) => `<div class="setting"><span>Ядро службы: ${escapeHtml(e.name)}</span><strong>${escapeHtml(e.version)} · ${e.available ? "Проверено" : "Недоступно"}</strong></div>`).join("")}` : ""}<button class="button subtle service-refresh" ${serviceChecking ? "disabled" : ""}>${serviceChecking ? "Проверяем…" : "Проверить связь со службой"}</button><p class="muted">Для VPN нужна служба Moth с протоколом IPC 2 (0.3.1–0.3.3). ${installationHint}</p></article><article class="settings-card"><h2>Ядра приложения</h2>${(state.engines || []).map((e) => `<div class="setting"><span>${escapeHtml(e.name)} ${escapeHtml(e.version)}</span><strong>${e.available ? "Хэш проверен при запуске" : escapeHtml(e.message || "Недоступен")}</strong></div>`).join("")}<p class="muted">HTTPS-проверка проходит через выбранный сервер. Её результат — не ICMP ping и не признак включённого системного VPN.</p></article><article class="settings-card"><h2>Ограничения</h2><p class="muted">После смены сети подключись заново. Kill switch и автоматическое восстановление после сна ещё разрабатываются. При сбое ядра туннель отключается, система возвращается к обычной сети.</p></article>`
     }
     </section><footer><span>MOTH · OPEN SOURCE</span><button class="button subtle app-quit" ${native ? "" : "disabled"}>Выйти</button></footer></main></div>
     <dialog id="import-dialog"><form id="import-form"><div class="dialog-heading"><div><p class="eyebrow">ИМПОРТ</p><h2>Добавить серверы</h2></div><button type="button" class="close" aria-label="Закрыть">×</button></div><label for="server-links">Ссылки серверов</label><textarea id="server-links" required rows="6" autocomplete="off" spellcheck="false" placeholder="vless://… или trojan://…"></textarea><p class="dialog-help">По одной ссылке на строку или Base64-список. Загрузка HTTPS-подписок будет добавлена позже.</p><p id="import-error" class="dialog-error" role="alert"></p><div class="dialog-actions"><button type="button" class="button subtle close">Отмена</button><button class="button" type="submit">Импортировать</button></div></form></dialog>
@@ -131,6 +137,10 @@ function render() {
     page = "home";
     render();
   };
+  if (page === "settings") {
+    app.querySelector("section")!.insertAdjacentHTML("beforeend", updateCard());
+    bindUpdates(app);
+  }
   const quitButton = app.querySelector<HTMLButtonElement>(".app-quit");
   if (quitButton) quitButton.onclick = async () => {
     try { await exitApp(); }
@@ -287,8 +297,11 @@ async function run(command: string, args: Record<string, unknown>) {
     render();
   }
 }
+void startUpdater(() => { if (!app.querySelector("dialog[open]")) render(); }).then(() => {
 render();
-call("get_snapshot")
+if (updateMonitor) return;
+void refreshVpn();
+return call("get_snapshot")
   .then((next) => {
     state = next;
     render();
@@ -297,6 +310,7 @@ call("get_snapshot")
     error = message(e);
     render();
   });
+});
 
 function updateVpnMessage() {
   vpnMessage = {
@@ -310,6 +324,7 @@ function updateVpnMessage() {
   }[vpn.phase];
 }
 async function refreshVpn() {
+  if (updateMonitor) return;
   if (!native) return;
   const before = JSON.stringify([
     vpn,
@@ -366,7 +381,6 @@ async function refreshVpn() {
     if (!vpnRenderPending) render();
   }
 }
-void refreshVpn();
 let refreshing = false;
 setInterval(async () => {
   if (refreshing) return;

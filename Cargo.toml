@@ -1,6 +1,6 @@
 [workspace]
-members = ["crates/moth-core", "crates/moth-platform", "crates/moth-engine", "crates/moth-ipc", "crates/moth-service", "crates/moth-update", "src-tauri"]
-default-members = ["crates/moth-core", "crates/moth-platform", "crates/moth-engine", "crates/moth-ipc", "crates/moth-service", "crates/moth-update"]
+members = ["crates/moth-core", "crates/moth-platform", "crates/moth-engine", "crates/moth-ipc", "crates/moth-service", "crates/moth-update", "crates/moth-maintenance", "src-tauri"]
+default-members = ["crates/moth-core", "crates/moth-platform", "crates/moth-engine", "crates/moth-ipc", "crates/moth-service", "crates/moth-update", "crates/moth-maintenance"]
 resolver = "2"
 
 [workspace.package]
