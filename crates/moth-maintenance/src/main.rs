@@ -87,6 +87,12 @@ fn directory(path: &Path) -> Result<()> {
     }
 }
 fn report(job: &Path, phase: &str, version: &str) -> Result<()> {
+    // Durable phase evidence distinguishes a verified rollback from refusal
+    // before installation. These files contain no profile/request data.
+    let mut event =
+        secure::create_protected_file(&job.join(format!("{phase}.event"))).map_err(|_| ())?;
+    event.write_all(version.as_bytes()).map_err(|_| ())?;
+    event.sync_all().map_err(|_| ())?;
     let next = job.join(format!("{}.next", Uuid::new_v4()));
     let mut file = secure::create_protected_file(&next).map_err(|_| ())?;
     serde_json::to_writer(
@@ -110,8 +116,9 @@ fn command(
     if !children_clean() {
         return Err(());
     }
-    let output = job.join(format!("{}.command", Uuid::new_v4()));
+    let output = job.join(format!("{}.command.log", Uuid::new_v4()));
     let file = secure::create_protected_file(&output).map_err(|_| ())?;
+    let errors = file.try_clone().map_err(|_| ())?;
     let mut command = Command::new(program);
     command
         .args(arguments)
@@ -120,7 +127,7 @@ fn command(
         .current_dir(job)
         .stdin(Stdio::null())
         .stdout(Stdio::from(file))
-        .stderr(Stdio::null());
+        .stderr(Stdio::from(errors));
     platform::environment(&mut command)?;
     let (mut child, containment) = platform::spawn(command)?;
     let deadline = Instant::now() + timeout;
@@ -148,7 +155,9 @@ fn command(
     } else {
         bytes(&output, 65536)
     };
-    let _ = fs::remove_file(output);
+    if result && value.is_ok() {
+        let _ = fs::remove_file(output);
+    }
     if !result {
         return Err(());
     }
@@ -280,7 +289,12 @@ fn apply(request: &Path) -> Result<()> {
         let existing = bytes(&job.join("status.json"), 4096)?;
         let status: serde_json::Value = serde_json::from_slice(&existing).map_err(|_| ())?;
         if !matches!(status["phase"].as_str(), Some("failed" | "recoveryFailed")) {
-            report(&job, "failed", VERSION)?;
+            let phase = if matches!(status["phase"].as_str(), Some("installing" | "rollingBack")) {
+                "recoveryFailed"
+            } else {
+                "failed"
+            };
+            report(&job, phase, VERSION)?;
         }
     }
     result

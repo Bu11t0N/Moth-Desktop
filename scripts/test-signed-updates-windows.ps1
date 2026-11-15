@@ -14,6 +14,7 @@ $installed=$false
 $guiProcess=$null
 $helperProcess=$null
 $serverProcess=$null
+$jobs=@()
 function Wait-NoGui {
     $deadline=[DateTime]::UtcNow.AddSeconds(20)
     while (Get-Process -Name moth-desktop,moth-monitor -ErrorAction SilentlyContinue) {
@@ -83,6 +84,7 @@ try {
                 if ($LASTEXITCODE -ne 0 -or $stopped.phase -ne 'disconnected') { throw 'GUI did not confirm VPN stop before privileged update.' }
                 $helper=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'Moth Desktop/maintenance/0.3.2/moth-maintenance.exe'
                 $helperProcess=Start-Process -FilePath $helper -ArgumentList "--apply `"$requestDirectory`"" -WindowStyle Hidden -PassThru
+                $jobs+=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) "Moth Desktop/updates/$identifier"
                 $authorized=$true
             }
             if ([DateTime]::UtcNow -gt $deadline) { throw 'Native signed update timed out.' }
@@ -98,6 +100,9 @@ try {
             if (-not $helperProcess.WaitForExit(15000) -or (($helperProcess.ExitCode -eq 0) -ne ($case -eq 'success'))) { throw 'Privileged updater outcome did not match native evidence.' }
             $monitor=Get-Content -LiteralPath (Join-Path $evidence 'monitor-result.json') -Raw | ConvertFrom-Json
             if (-not $monitor.ordinaryUser -or $monitor.phase -ne $(if($case -eq 'success'){'complete'}else{'failed'})) { throw 'Native ordinary-user monitor failed.' }
+            $job=$jobs[-1]
+            if (-not (Test-Path -LiteralPath (Join-Path $job 'installing.event'))) { throw 'Actual installer was not reached.' }
+            if ($case -eq 'rollback' -and (-not (Test-Path -LiteralPath (Join-Path $job 'rollingBack.event')) -or -not (Test-Path -LiteralPath (Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'Moth Desktop/acceptance-poststart-fixture')))) { throw 'Rollback did not reach the forced post-start failure.' }
             $helperProcess.Dispose();$helperProcess=$null
         }
         $hash=(Get-FileHash -LiteralPath (Join-Path $data 'profiles.dpapi') -Algorithm SHA256).Hash
@@ -109,6 +114,13 @@ try {
         $guiProcess.Dispose();$guiProcess=$null
         Write-Output "Actual ordinary-user signed update acceptance passed: $case"
     }
+} catch {
+    foreach ($job in $jobs) {
+        if (Test-Path -LiteralPath (Join-Path $job 'status.json')) { Get-Content -LiteralPath (Join-Path $job 'status.json') }
+        Get-ChildItem -LiteralPath $job -Filter '*.event' | Select-Object -ExpandProperty Name
+        foreach ($log in Get-ChildItem -LiteralPath $job -Filter '*.command.log') { Get-Content -LiteralPath $log.FullName -Tail 40 }
+    }
+    throw
 } finally {
     if ($guiProcess) { if (-not $guiProcess.HasExited) {$guiProcess.Kill();$guiProcess.WaitForExit()};$guiProcess.Dispose() }
     if ($helperProcess) { if (-not $helperProcess.HasExited) {$helperProcess.Kill();$helperProcess.WaitForExit()};$helperProcess.Dispose() }

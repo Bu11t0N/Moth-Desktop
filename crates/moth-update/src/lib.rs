@@ -154,6 +154,16 @@ fn signature(encoded: &str) -> Result<Signature, UpdateError> {
     let text = std::str::from_utf8(&bytes).map_err(|_| UpdateError::Signature)?;
     Signature::decode(text).map_err(|_| UpdateError::Signature)
 }
+fn signed_version(signature: &Signature, expected: &str) -> Result<(), UpdateError> {
+    let mut versions = signature
+        .trusted_comment()
+        .split('\t')
+        .filter_map(|field| field.strip_prefix("version:"));
+    if versions.next() != Some(expected) || versions.next().is_some() {
+        return Err(UpdateError::Signature);
+    }
+    Ok(())
+}
 
 /// Only signature verification constructs this type. Root maintenance repeats
 /// construction from the untrusted request bytes using its own compiled key.
@@ -188,10 +198,12 @@ impl VerifiedUpdate {
         if bytes.is_empty() || bytes.len() > MAX_MANIFEST {
             return Err(UpdateError::Size);
         }
-        key.verify(bytes, &signature(signed)?, false)
+        let decoded = signature(signed)?;
+        key.verify(bytes, &decoded, false)
             .map_err(|_| UpdateError::Signature)?;
         let manifest: Manifest =
             serde_json::from_slice(bytes).map_err(|_| UpdateError::Manifest)?;
+        signed_version(&decoded, &manifest.version)?;
         manifest.validate(&release_version(current_version)?)?;
         Ok(Self {
             manifest,
@@ -233,6 +245,7 @@ impl VerifiedUpdate {
             return Err(UpdateError::Size);
         }
         let signed = signature(&artifact.signature)?;
+        signed_version(&signed, &self.manifest.version)?;
         let mut verifier = key
             .verify_stream(&signed)
             .map_err(|_| UpdateError::Signature)?;

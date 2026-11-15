@@ -6,6 +6,20 @@ const SIGNED: &str = include_str!("fixtures/manifest.json.sig");
 const PACKAGE: &[u8] = include_bytes!("fixtures/package.bin");
 
 #[test]
+fn valid_signature_for_different_signed_version_is_rejected() {
+    let key = public_key(FIXTURE_KEY).unwrap();
+    let mismatch = include_str!("fixtures/version-mismatch.json.sig");
+    // This is a genuine official-signer signature over the same manifest, not
+    // a tampered signature that would fail generic cryptographic verification.
+    key.verify(MANIFEST, &signature(mismatch).unwrap(), false)
+        .unwrap();
+    assert!(matches!(
+        VerifiedUpdate::with_key(MANIFEST, mismatch, "0.3.2", &key),
+        Err(UpdateError::Signature)
+    ));
+}
+
+#[test]
 fn official_signer_vectors_verify_and_changes_unsigned_data_and_wrong_keys_fail() {
     let key = public_key(FIXTURE_KEY).unwrap();
     let update = VerifiedUpdate::with_key(MANIFEST, SIGNED, "0.3.2", &key).unwrap();

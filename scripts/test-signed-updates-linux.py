@@ -32,6 +32,7 @@ def main():
         raise RuntimeError('A fresh acceptance machine/account is required')
     certificate=Path('/usr/local/share/ca-certificates')/('moth-update-ci-'+str(uuid.uuid4())+'.crt')
     created=False;installed=False;session=None;helper=None;server=None
+    jobs=[]
     try:
         with certificate.open('xb') as target: target.write((fixture/'ca.crt').read_bytes())
         certificate.chmod(0o644)
@@ -86,6 +87,7 @@ def main():
                         if state.get('phase')!='disconnected':
                             raise RuntimeError('GUI did not confirm VPN stop before privileged update')
                         helper=subprocess.Popen(['/usr/lib/moth-desktop/moth-maintenance','--apply',str(directory)],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+                        jobs.append(Path('/var/lib/moth-desktop/updates')/identifier)
                         authorized=True
                     if session.poll() is not None or time.monotonic()>deadline:
                         raise RuntimeError('Native Linux update session exited or timed out')
@@ -104,6 +106,10 @@ def main():
                     monitor=json.loads((evidence/'monitor-result.json').read_bytes())
                     if not monitor.get('ordinaryUser') or monitor.get('phase')!=('complete' if case=='success' else 'failed'):
                         raise RuntimeError('Native Linux monitor did not confirm transaction')
+                    job=jobs[-1]
+                    if not (job/'installing.event').exists(): raise RuntimeError('Actual package installation was not reached')
+                    if case=='rollback' and (not (job/'rollingBack.event').exists() or not Path('/run/moth-update-acceptance-poststart').exists()):
+                        raise RuntimeError('Rollback did not reach the forced post-start failure')
                 expected='0.3.3' if case=='success' else '0.3.2'
                 health=json.loads(run('/usr/lib/moth-desktop/moth-service','--status').stdout)
                 if health['version']!=expected or not all(engine['available'] for engine in health['engines']):
@@ -111,6 +117,11 @@ def main():
                 print('Actual ordinary-user signed Linux update acceptance passed: '+case,flush=True)
             if session.wait(timeout=30)!=0: raise RuntimeError('Native Linux update user session failed')
     except Exception:
+        for job in jobs:
+            if (job/'status.json').exists(): print('Privileged transaction status:',(job/'status.json').read_text(),file=sys.stderr)
+            print('Privileged phases:',','.join(sorted(path.stem for path in job.glob('*.event'))),file=sys.stderr)
+            for path in job.glob('*.command.log'):
+                sys.stderr.write(path.read_text(errors='replace')[-6000:])
         if home.exists() and (home/'session.log').exists():
             sys.stderr.write((home/'session.log').read_text(errors='replace')[-2000:])
         raise

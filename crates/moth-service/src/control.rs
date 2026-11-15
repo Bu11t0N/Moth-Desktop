@@ -50,28 +50,46 @@ pub async fn dispatch(
                 Err(_) => Reply::Failure {
                     code: ErrorCode::Busy,
                 },
-                Ok(_guard) => match moth_core::import_links(link) {
-                    Ok(mut profiles) if profiles.len() == 1 => {
-                        let profile = profiles.remove(0);
-                        match timeout(Duration::from_secs(25), engines.probe(&profile)).await {
-                            Ok(Ok(result)) => Reply::Probe {
-                                latency_ms: result.latency_ms,
-                            },
-                            Ok(Err(
-                                moth_engine::EngineError::Missing
-                                | moth_engine::EngineError::Integrity,
-                            )) => Reply::Failure {
-                                code: ErrorCode::EngineUnavailable,
-                            },
-                            _ => Reply::Failure {
-                                code: ErrorCode::ProbeFailed,
-                            },
+                Ok(_guard) => {
+                    // Probes also execute pinned cores. Keep maintenance from
+                    // replacing them while a production probe is in flight.
+                    // Read-only development console tests do not create global
+                    // installation state on the developer's machine.
+                    let _maintenance = if development {
+                        None
+                    } else {
+                        match moth_ipc::maintenance::TunnelLease::acquire() {
+                            Ok(lease) => Some(lease),
+                            Err(_) => {
+                                return Reply::Failure {
+                                    code: ErrorCode::Busy,
+                                }
+                            }
                         }
+                    };
+                    match moth_core::import_links(link) {
+                        Ok(mut profiles) if profiles.len() == 1 => {
+                            let profile = profiles.remove(0);
+                            match timeout(Duration::from_secs(25), engines.probe(&profile)).await {
+                                Ok(Ok(result)) => Reply::Probe {
+                                    latency_ms: result.latency_ms,
+                                },
+                                Ok(Err(
+                                    moth_engine::EngineError::Missing
+                                    | moth_engine::EngineError::Integrity,
+                                )) => Reply::Failure {
+                                    code: ErrorCode::EngineUnavailable,
+                                },
+                                _ => Reply::Failure {
+                                    code: ErrorCode::ProbeFailed,
+                                },
+                            }
+                        }
+                        _ => Reply::Failure {
+                            code: ErrorCode::InvalidProfile,
+                        },
                     }
-                    _ => Reply::Failure {
-                        code: ErrorCode::InvalidProfile,
-                    },
-                },
+                }
             },
         }
     }

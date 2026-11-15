@@ -51,7 +51,7 @@ def main():
     environment=os.environ.copy()
     environment['MOTH_FIXTURE_SOURCE']=str(source)
     environment['MOTH_FIXTURE_DIRECTORY']=str(directory)
-    environment['MOTH_FIXTURE_PASSWORD']=secrets.token_urlsafe(48)
+    environment['MOTH_FIXTURE_PASSWORD']='Moth-test-'+secrets.token_urlsafe(48)
     run('node',str(source/'scripts/update-fixture-signer.cjs'),'generate',env=environment,quiet=True)
     (source/'packaging/updater.pub').write_bytes((directory/'fixture.key.pub').read_bytes())
     openssl=shutil.which('openssl')
@@ -96,12 +96,12 @@ def main():
     base=f'https://localhost:{server.server_port}/releases/download'
     environment['MOTH_FIXTURE_BASE']=base
     code=source/'crates/moth-update/src/lib.rs'
-    text=code.read_text().replace('https://api.github.com/repos/Bu11t0N/Moth-Desktop/releases?per_page=20',f'https://localhost:{server.server_port}/releases?per_page=20').replace('https://github.com/Bu11t0N/Moth-Desktop/releases/download',base)
-    code.write_text(text)
+    text=code.read_text(encoding='utf-8').replace('https://api.github.com/repos/Bu11t0N/Moth-Desktop/releases?per_page=20',f'https://localhost:{server.server_port}/releases?per_page=20').replace('https://github.com/Bu11t0N/Moth-Desktop/releases/download',base)
+    code.write_text(text,encoding='utf-8')
     package_name='Moth-0.3.3-'+('windows-x64-setup.exe' if windows else 'linux-x64.deb')
     threading.Thread(target=server.serve_forever,daemon=True).start()
     run('node','scripts/fetch-engines.mjs',cwd=source)
-    configurations={name:(source/name).read_text() for name in ('Cargo.toml','package.json','src-tauri/tauri.conf.json','scripts/Service.ps1')}
+    configurations={name:(source/name).read_text(encoding='utf-8') for name in ('Cargo.toml','package.json','src-tauri/tauri.conf.json','scripts/Service.ps1')}
     original_lock=(source/'Cargo.lock').read_text()
     if not windows:
         linux=source/'src-tauri/tauri.linux.conf.json'
@@ -109,7 +109,7 @@ def main():
     try:
         for version,variant in [('0.3.2','baseline'),('0.3.3','candidate')]:
             for name,original in configurations.items():
-                (source/name).write_text(original.replace('0.3.3',version))
+                (source/name).write_text(original.replace('0.3.3',version),encoding='utf-8')
             lock=re.sub(r'(\[\[package\]\]\nname = "moth-[^"]+"\nversion = ")0\.3\.3(")',lambda match:match[1]+version+match[2],original_lock)
             (source/'Cargo.lock').write_text(lock)
             run('cargo','build','-p','moth-service','-p','moth-maintenance','--locked',cwd=source)
@@ -128,7 +128,8 @@ def main():
         fault=directory/'fault';fault.mkdir()
         if windows:
             script=source/'scripts/Service.ps1'
-            script.write_text(script.read_text().replace('if ($health.version -ne $expectedVersion)','if ($true)'))
+            marker="$fixtureMarker=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'Moth Desktop/acceptance-poststart-fixture'; [IO.File]::Open($fixtureMarker,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None).Dispose(); if ($true)"
+            script.write_text(script.read_text(encoding='utf-8').replace('if ($health.version -ne $expectedVersion)',marker),encoding='utf-8')
             run('pwsh','-NoProfile','-File',str(source/'scripts/build-installer-windows.ps1'),'-PackageDirectory',str(directory/'candidate/portable/Moth-0.3.3-windows-x64'),'-OutputDirectory',str(fault),cwd=source)
         else:
             package=directory/'candidate'/package_name
@@ -137,7 +138,7 @@ def main():
             script=unpacked/'DEBIAN/postinst'
             original=script.read_text()
             if not original.endswith('exit 0\n'): raise RuntimeError('Post-start fault injection point changed')
-            script.write_text(original[:-len('exit 0\n')]+'echo "Isolated post-start failure fixture" >&2\nexit 1\n')
+            script.write_text(original[:-len('exit 0\n')]+'(umask 077; set -C; : >/run/moth-update-acceptance-poststart)\necho "Isolated post-start failure fixture" >&2\nexit 1\n')
             run('dpkg-deb','--build','--root-owner-group',str(unpacked),str(fault/package_name))
         run('node',str(source/'scripts/update-fixture-signer.cjs'),'sign',env=environment,quiet=True)
         # The caller's source trust anchor/endpoints remain byte-identical.
