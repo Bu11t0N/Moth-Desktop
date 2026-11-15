@@ -47,6 +47,25 @@ try {
     if (-not (Get-LocalGroupMember -SID 'S-1-5-32-545' | Where-Object {$_.SID.Value -eq $sid.Value})) {
         Add-LocalGroupMember -SID 'S-1-5-32-545' -Member "$env:COMPUTERNAME\$user"
     }
+    # Initialize the new account's actual Windows profile before starting a
+    # WebView. Custom ProcessStartInfo environments otherwise inherit the CI
+    # administrator's USERPROFILE/LOCALAPPDATA/TEMP despite LoadUserProfile.
+    $credential=[PSCredential]::new("$env:COMPUTERNAME\$user",$password)
+    $initialize=Start-Process -FilePath (Join-Path $env:SystemRoot 'System32/cmd.exe') -ArgumentList '/c exit 0' -Credential $credential -LoadUserProfile -WorkingDirectory $env:SystemRoot -WindowStyle Hidden -Wait -PassThru
+    if ($initialize.ExitCode -ne 0) { throw 'Acceptance user profile initialization failed.' }
+    $initialize.Dispose()
+    $profileImage=(Get-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\$($sid.Value)").ProfileImagePath
+    $profileImage=[Environment]::ExpandEnvironmentVariables($profileImage)
+    if (-not [IO.Path]::IsPathFullyQualified($profileImage) -or -not (Test-Path -LiteralPath $profileImage -PathType Container)) { throw 'Actual Windows acceptance profile is unavailable.' }
+    $userEnvironment=@{
+        USERPROFILE=$profileImage
+        LOCALAPPDATA=(Join-Path $profileImage 'AppData/Local')
+        APPDATA=(Join-Path $profileImage 'AppData/Roaming')
+        TEMP=(Join-Path $profileImage 'AppData/Local/Temp')
+        TMP=(Join-Path $profileImage 'AppData/Local/Temp')
+        USERNAME=$user
+        USERDOMAIN=$env:COMPUTERNAME
+    }
     $data=Join-Path $fixture 'desktop-data'
     New-Item -ItemType Directory -Path $data | Out-Null
     $acl=Get-Acl -LiteralPath $data
@@ -66,6 +85,7 @@ try {
         $info.Environment['MOTH_NATIVE_UPDATE_EVIDENCE']=$evidence
         $info.Environment['MOTH_NATIVE_UPDATE_EXPECT']=$case
         $info.Environment['MOTH_DEV_DATA_DIR']=$data
+        foreach ($entry in $userEnvironment.GetEnumerator()) { $info.Environment[$entry.Key]=$entry.Value }
         $guiProcess=[Diagnostics.Process]::Start($info)
         # Synthetic credential goes only over a private stdin pipe, not argv/logs.
         $guiProcess.StandardInput.Write($link)
@@ -73,6 +93,7 @@ try {
         $deadline=[DateTime]::UtcNow.AddMinutes(12)
         $authorized=$false
         while (-not (Test-Path -LiteralPath (Join-Path $evidence 'result.json'))) {
+            if (-not $authorized -and $guiProcess.HasExited) { throw "Native GUI exited before update authorization: $($guiProcess.ExitCode)." }
             if (Test-Path -LiteralPath (Join-Path $evidence 'error.txt')) { throw (Get-Content -LiteralPath (Join-Path $evidence 'error.txt') -Raw) }
             $request=Join-Path $evidence 'privileged-request'
             if (-not $authorized -and (Test-Path -LiteralPath $request)) {
