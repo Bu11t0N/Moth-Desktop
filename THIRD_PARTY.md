@@ -23,7 +23,15 @@ Additional Rust dependencies include Tokio, reqwest and sha2 (MIT/Apache-2.0);
 windows-service and widestring (MIT/Apache-2.0) support the Windows service.
 resolved dependencies are pinned in Cargo.lock. The engine source trees include their
 go.mod/go.sum and upstream build configuration for the transitive Go dependency graph.
-Dependency/license inventory is a release gate; this short list is not a complete transitive inventory.
+The complete locked Rust runtime graph for Windows x64 and Linux x64 is included
+in `licenses/Rust-dependencies.html`, generated with cargo-about 0.9.3, `about.toml`
+and `packaging/licenses.hbs`. The bundled JavaScript runtime is @tauri-apps/api;
+its notice is in `licenses/tauri-api-MIT.txt`. `licenses/dependency-inventory.json`
+records source-lock/configuration and output hashes; `python scripts/license-notices.py`
+checks them. To regenerate after dependency changes, run `npm ci`, then
+`python scripts/license-notices.py generate PATH_TO_CARGO_ABOUT_0_9_3`.
+Build-only dependencies are excluded. The upstream engine Go dependency notices
+still require a separate complete inventory before production publication.
 
 The embedded amd64 Wintun DLL matches official Wintun 0.14.1: SHA-256 e5da8447dc2c320edc0fc52fa01885c103de8c118481f683643cacc3220dafce. Official archive SHA-256: 07c256185d6ee3652e09fa55c0b673e2624b565e02c4b9091c79ca7d2f24ef51 (https://www.wintun.net/builds/wintun-0.14.1.zip). The prebuilt-binary license is preserved in licenses/Wintun-0.14.1.txt. Git blob aee04e77bfbd6601adbcd5a46435f059e31cf6e4 matches sing-tun v0.7.13 internal/wintun/amd64/wintun.dll.
 

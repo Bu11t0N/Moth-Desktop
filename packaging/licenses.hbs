@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>Moth Desktop Rust dependency notices</title>
+<style>body{font-family:system-ui,sans-serif;max-width:960px;margin:2rem auto;padding:1rem}pre{white-space:pre-wrap;overflow-wrap:anywhere}</style>
+<h1>Moth Desktop Rust dependency notices</h1>
+<p>Runtime dependency graph for Windows x64 and Linux x64 from Cargo.lock. Generated with cargo-about 0.9.3 and the repository about.toml. Build and development dependencies are excluded. Engine and JavaScript notices are provided separately.</p>
+{{#each licenses}}
+<section><h2>{{name}}</h2><ul>
+{{#each used_by}}<li>{{crate.name}} {{crate.version}}{{#if crate.repository}} — <a href="{{crate.repository}}">Source repository</a>{{/if}}</li>{{/each}}
+</ul><pre>{{text}}</pre></section>
+{{/each}}
+</html>

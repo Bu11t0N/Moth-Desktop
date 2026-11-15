@@ -24,6 +24,7 @@ jobs:
         with:
           cache-on-failure: true
       - run: npm ci
+      - run: python scripts/license-notices.py
       - run: npm run engines:fetch
       - run: npm run build
       - run: cargo fmt --all --check
@@ -105,6 +106,7 @@ jobs:
         with:
           cache-on-failure: true
       - run: node scripts/fetch-engines.mjs
+      - run: python3 scripts/license-notices.py
       - name: Secret Service acceptance dependencies
         run: sudo apt-get update && sudo apt-get install -y gnome-keyring dbus-x11 dnsutils libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf xvfb xfwm4 xfce4-panel
       - run: bash scripts/test-linux-core.sh

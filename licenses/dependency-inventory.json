@@ -1,0 +1,16 @@
+{
+  "generator": "cargo-about 0.9.3",
+  "inputs": {
+    "Cargo.lock": "e5927aaa40f3145354983cd798195af68d285d8118382ae46a364afd5398d92b",
+    "package-lock.json": "902413659dabc069b86150fc6bc94d187e4b2131ac9c785300c9cba8646d849e",
+    "about.toml": "8a0a4180ee326c6c7115decc89df4a41f370cee09d3818d2963269bcd2f790bf",
+    "packaging/licenses.hbs": "0a12954318f78c424f9a99155d5206ac6c6ad9a79f3c3d09d6b1c2697ecd31f1"
+  },
+  "outputs": {
+    "licenses/Rust-dependencies.html": "af595b115d22edbf89a560db503141eab6e8ae87d8eeeda72247c5530f6d92a6",
+    "licenses/tauri-api-MIT.txt": "9dd42ea92cff2ede5cd477cbfcce051b2d0115c0ac7f368ee88cb545055dff1d"
+  },
+  "javascript": {
+    "@tauri-apps/api": "2.12.4"
+  }
+}
