@@ -21,6 +21,10 @@ for case in ('metadata-rejection','download-rejection','rollback','success'):
     with (home/'profile').open('rb') as profile,(evidence/'gui.log').open('wb') as log:
         process=subprocess.Popen(['/usr/bin/moth-desktop'],stdin=profile,stdout=log,stderr=log,env=environment)
         while not (evidence/'result.json').exists():
+            # Reap the original GUI as soon as it exits for maintenance. Leaving
+            # a zombie until the restarted GUI reports would make the package
+            # guard correctly see its still-present process name indefinitely.
+            process.poll()
             if (evidence/'error.txt').exists() or time.monotonic()>deadline:
                 raise RuntimeError('Native update failed or timed out')
             time.sleep(0.1)
