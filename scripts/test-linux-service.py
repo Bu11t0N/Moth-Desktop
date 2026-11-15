@@ -192,8 +192,18 @@ def main():
 
             def restored():
                 wait(lambda: not Path("/sys/class/net/moth0").exists(), "Private TUN survived teardown")
-                if Path("/run/moth-desktop/network-v1.json").exists() or snapshot() != baseline:
-                    raise RuntimeError("Network rules, routes or physical DNS were not preserved")
+                # resolved consumes link removal asynchronously; require exact
+                # baseline restoration after it has had time to settle.
+                try:
+                    wait(lambda: not Path("/run/moth-desktop/network-v1.json").exists() and snapshot() == baseline,
+                         "Network rules, routes or physical DNS were not preserved", seconds=8)
+                except RuntimeError:
+                    current=snapshot()
+                    print("Network journal remains:",Path("/run/moth-desktop/network-v1.json").exists(),file=sys.stderr)
+                    for key in baseline:
+                        if baseline[key]!=current[key]:
+                            print(f"Acceptance baseline changed ({key}): before={baseline[key]!r} after={current[key]!r}",file=sys.stderr)
+                    raise
 
             connected()
             run(lease_example,"blocked")
