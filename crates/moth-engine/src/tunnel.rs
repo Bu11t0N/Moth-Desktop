@@ -70,18 +70,41 @@ impl EngineSet {
     /// A successful return requires actual HTTPS sourced from the TUN address,
     /// not merely a spawned process. Startup failure/cancellation drops both jobs.
     pub async fn connect(&self, profile: &Profile) -> Result<Tunnel, EngineError> {
+        self.connect_with_policy(profile, &moth_core::ConnectionSettings::default())
+            .await
+    }
+    pub async fn connect_with_policy(
+        &self,
+        profile: &Profile,
+        policy: &moth_core::ConnectionSettings,
+    ) -> Result<Tunnel, EngineError> {
+        policy.validate().map_err(|_| EngineError::InvalidConfig)?;
         let lease =
             moth_ipc::maintenance::TunnelLease::acquire().map_err(|_| EngineError::Maintenance)?;
         let mut tunnel = self
-            .connect_checked(profile, "https://cp.cloudflare.com/generate_204")
+            .connect_checked_policy(profile, &policy.health_url, policy)
             .await?;
         tunnel._maintenance = Some(lease);
         Ok(tunnel)
     }
+    #[cfg(test)]
     async fn connect_checked(
         &self,
         profile: &Profile,
         check_url: &str,
+    ) -> Result<Tunnel, EngineError> {
+        self.connect_checked_policy(
+            profile,
+            check_url,
+            &moth_core::ConnectionSettings::default(),
+        )
+        .await
+    }
+    async fn connect_checked_policy(
+        &self,
+        profile: &Profile,
+        check_url: &str,
+        policy: &moth_core::ConnectionSettings,
     ) -> Result<Tunnel, EngineError> {
         // Resolve the server before changing DNS/routes, then pin this connection
         // to one numeric address. TLS SNI/Reality/WS host remain unchanged.
@@ -116,14 +139,20 @@ impl EngineSet {
         };
         let mut config = moth_core::xray_bridge_config(profile, &bridge);
         let outbound = &mut config["outbounds"][0];
-        let key = if profile.protocol == moth_core::Protocol::Vless {
+        let key = if matches!(
+            profile.protocol,
+            moth_core::Protocol::Vless | moth_core::Protocol::Vmess
+        ) {
             "vnext"
         } else {
             "servers"
         };
         outbound["settings"][key][0]["address"] = serde_json::json!(address.ip().to_string());
         outbound["streamSettings"]["sockopt"] = serde_json::json!({"interface":interface});
-        let mut tun_config = moth_core::sing_box_tun_config(&bridge);
+        let mut tun_config = moth_core::sing_box_tun_policy(&bridge, policy)
+            .map_err(|_| EngineError::InvalidConfig)?;
+        tun_config["outbounds"][1]["bind_interface"] = serde_json::json!(interface);
+        protect_verifier(&mut tun_config, policy)?;
         tun_config["inbounds"].as_array_mut().ok_or(EngineError::Process)?.push(serde_json::json!({"type":"mixed","tag":"subscription-in","listen":"127.0.0.1","listen_port":subscription_proxy.port,"users":[{"username":subscription_proxy.username,"password":subscription_proxy.password}]}));
         self.validate(Engine::Xray, &config).await?;
         self.validate(Engine::SingBox, &tun_config).await?;
@@ -293,9 +322,63 @@ mod acceptance {
         // This address has no direct endpoint. Response can only be produced by
         // TUN -> authenticated bridge -> Xray server -> loopback fixture.
         let url = "http://198.18.0.123:18080/generate_204";
-        for _ in 0..2 {
-            let mut tunnel = engines.connect_checked(&profile, url).await.unwrap();
+        let curl = std::path::PathBuf::from(std::env::var_os("SystemRoot").unwrap())
+            .join("System32/curl.exe");
+        for split in [
+            None,
+            Some(moth_core::SplitMode::Bypass),
+            Some(moth_core::SplitMode::Only),
+        ] {
+            let mut tunnel = if let Some(mode) = split {
+                let policy = moth_core::ConnectionSettings {
+                    split_mode: mode,
+                    split_apps: vec![curl.to_string_lossy().into_owned()],
+                    ..Default::default()
+                };
+                engines
+                    .connect_checked_policy(&profile, url, &policy)
+                    .await
+                    .unwrap()
+            } else {
+                engines.connect_checked(&profile, url).await.unwrap()
+            };
             assert!(tunnel.alive());
+            let selected = Command::new(&curl)
+                .args(["--noproxy", "*", "--silent", "--max-time", "3", url])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .kill_on_drop(true)
+                .status()
+                .await
+                .unwrap();
+            assert!(selected.success() != (split == Some(moth_core::SplitMode::Bypass)));
+            if split == Some(moth_core::SplitMode::Only) {
+                let other=Command::new("pwsh").args(["-NoProfile","-Command","try { $null=Invoke-WebRequest -NoProxy -TimeoutSec 3 -Uri 'http://198.18.0.123:18080/generate_204'; exit 0 } catch { exit 1 }"]).stdout(Stdio::null()).stderr(Stdio::null()).kill_on_drop(true).status().await.unwrap();
+                assert!(!other.success());
+            }
+            let credentials = tunnel.subscription_proxy();
+            let proxy = reqwest::Proxy::all(format!("http://127.0.0.1:{}", credentials.port))
+                .unwrap()
+                .basic_auth(&credentials.username, &credentials.password);
+            let subscription_client = reqwest::Client::builder()
+                .no_proxy()
+                .proxy(proxy)
+                .timeout(Duration::from_secs(5))
+                .build()
+                .unwrap();
+            assert!(subscription_client.get(url).send().await.unwrap().status() == 204);
+            let denied = reqwest::Client::builder()
+                .no_proxy()
+                .proxy(
+                    reqwest::Proxy::all(format!("http://127.0.0.1:{}", credentials.port)).unwrap(),
+                )
+                .timeout(Duration::from_secs(5))
+                .build()
+                .unwrap()
+                .get(url)
+                .send()
+                .await;
+            assert!(denied.is_err() || denied.unwrap().status() != 204);
             let response = reqwest::Client::builder()
                 .no_proxy()
                 .timeout(Duration::from_secs(5))
@@ -330,6 +413,7 @@ mod acceptance {
                 assert_eq!(&bytes[..n], b"moth-udp-ok");
             }
             tunnel.stop().await;
+            assert!(subscription_client.get(url).send().await.is_err());
             tokio::time::sleep(Duration::from_secs(2)).await;
             assert!(reqwest::Client::builder()
                 .no_proxy()

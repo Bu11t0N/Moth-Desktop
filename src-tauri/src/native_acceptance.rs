@@ -88,7 +88,7 @@ async fn exercise(app: &tauri::AppHandle) -> Result<(), &'static str> {
     if app.get_webview_window("main").is_none() {
         return Err("close destroyed webview");
     }
-    let state = super::tunnel_status()
+    let state = super::tunnel_status(app.clone())
         .await
         .map_err(|_| "service status unavailable after close")?;
     if state.phase != moth_ipc::TunnelPhase::Connected || !state.owned_by_caller {

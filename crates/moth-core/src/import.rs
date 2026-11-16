@@ -21,6 +21,14 @@ pub fn import_links(input: &str) -> Result<Vec<Profile>, ImportError> {
         return Err(fail("Список больше 2 МБ"));
     }
     let input = input.trim().trim_start_matches('\u{feff}').trim();
+    if input.starts_with('{')
+        || input.starts_with('[')
+        || input.starts_with("proxies:")
+        || input.contains("\nproxies:")
+        || input.contains("proxy-providers:")
+    {
+        return crate::formats::parse(input).map_err(fail);
+    }
     let decoded;
     let text = if !input.contains("://") {
         let compact: String = input.chars().filter(|c| !c.is_ascii_whitespace()).collect();
@@ -29,6 +37,12 @@ pub fn import_links(input: &str) -> Result<Vec<Profile>, ImportError> {
             .find_map(|e| e.decode(&compact).ok())
             .ok_or_else(|| fail("Ожидается ссылка сервера или Base64-список"))?;
         decoded = String::from_utf8(bytes).map_err(|_| fail("Список должен быть в UTF-8"))?;
+        if decoded.trim_start().starts_with('{')
+            || decoded.trim_start().starts_with('[')
+            || decoded.contains("proxies:")
+        {
+            return crate::formats::parse(&decoded).map_err(fail);
+        }
         decoded.as_str()
     } else {
         input
@@ -63,7 +77,7 @@ fn decode(text: &str) -> Result<String, &'static str> {
         .map_err(|_| "Неверная кодировка ссылки")
 }
 
-fn parse(line: &str) -> Result<Profile, &'static str> {
+pub(crate) fn parse(line: &str) -> Result<Profile, &'static str> {
     if line.len() > 16384 {
         return Err("Ссылка слишком длинная");
     }
@@ -79,6 +93,16 @@ fn parse(line: &str) -> Result<Profile, &'static str> {
         {
             return Err("Некорректное percent-кодирование");
         }
+    }
+    if line.starts_with("vmess://")
+        || line.starts_with("ss://")
+        || line.starts_with("socks://")
+        || line.starts_with("socks5://")
+        || line.starts_with("socks5h://")
+        || line.starts_with("http://")
+        || line.starts_with("https://")
+    {
+        return crate::extra_protocols::parse(line);
     }
     let url = Url::parse(line).map_err(|_| "Некорректная ссылка")?;
     let protocol =
@@ -292,5 +316,6 @@ fn parse(line: &str) -> Result<Profile, &'static str> {
         tls,
         transport,
         flow,
+        options: Default::default(),
     })
 }

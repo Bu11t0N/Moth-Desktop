@@ -5,6 +5,7 @@ use serde::Serialize;
 use std::sync::Mutex;
 use tauri::Manager;
 use uuid::Uuid;
+mod backup;
 #[cfg(all(any(windows, target_os = "linux"), debug_assertions))]
 mod native_acceptance;
 mod subscriptions;
@@ -28,6 +29,8 @@ struct Snapshot {
     profiles: Vec<ProfileSummary>,
     subscriptions: Vec<moth_core::SubscriptionSummary>,
     favorites: Vec<Uuid>,
+    archived: Vec<Uuid>,
+    settings: moth_core::ConnectionSettings,
     selected: Option<Uuid>,
     capabilities: moth_platform::Capabilities,
     version: &'static str,
@@ -38,6 +41,8 @@ fn snapshot(library: &Library, engines: &[moth_engine::EngineStatus]) -> Snapsho
         profiles: library.profiles.iter().map(|p| p.summary()).collect(),
         subscriptions: library.subscriptions.iter().map(|s| s.summary()).collect(),
         favorites: library.favorites.clone(),
+        archived: library.archived.clone(),
+        settings: library.settings.clone(),
         selected: library.selected,
         capabilities: moth_platform::capabilities(),
         version: env!("CARGO_PKG_VERSION"),
@@ -87,6 +92,17 @@ fn remove_server(id: Uuid, state: tauri::State<AppState>) -> Result<Snapshot, St
         } else {
             Err("Сервер не найден".into())
         }
+    })
+}
+#[tauri::command]
+fn save_connection_settings(
+    input: moth_core::ConnectionSettings,
+    state: tauri::State<AppState>,
+) -> Result<Snapshot, String> {
+    input.validate().map_err(str::to_owned)?;
+    mutate(&state, |library| {
+        library.settings = input;
+        Ok(())
     })
 }
 #[tauri::command]
@@ -183,8 +199,50 @@ async fn tunnel_call(command: moth_ipc::Command) -> Result<moth_ipc::TunnelState
     }
 }
 #[tauri::command]
-async fn tunnel_status() -> Result<moth_ipc::TunnelState, String> {
-    tunnel_call(moth_ipc::Command::TunnelStatus {}).await
+async fn tunnel_status(app: tauri::AppHandle) -> Result<moth_ipc::TunnelState, String> {
+    let status = tunnel_call(moth_ipc::Command::TunnelStatus {}).await?;
+    #[cfg(any(windows, target_os = "linux"))]
+    if status.owned_by_caller && status.phase == moth_ipc::TunnelPhase::Connected {
+        let failover = app
+            .state::<AppState>()
+            .library
+            .lock()
+            .map(|l| l.settings.failover)
+            .unwrap_or(false);
+        if failover {
+            if let Ok(response) = moth_ipc::ServiceClient::production()
+                .call(moth_ipc::Command::ActiveProfile {})
+                .await
+            {
+                if let moth_ipc::Reply::ActiveProfile(Some(profile)) = response.result {
+                    let handle = app.clone();
+                    let _ = tauri::async_runtime::spawn_blocking(move || {
+                        let state = handle.state::<AppState>();
+                        let changed = state
+                            .library
+                            .lock()
+                            .map(|l| {
+                                l.selected != Some(profile.id)
+                                    && l.profiles.iter().any(|p| p.id == profile.id)
+                            })
+                            .unwrap_or(false);
+                        if changed
+                            && mutate(&state, |l| {
+                                l.select(profile.id);
+                                Ok(())
+                            })
+                            .is_ok()
+                        {
+                            use tauri::Emitter;
+                            let _ = handle.emit("moth-library-changed", ());
+                        }
+                    })
+                    .await;
+                }
+            }
+        }
+    }
+    Ok(status)
 }
 #[tauri::command]
 async fn disconnect_vpn() -> Result<moth_ipc::TunnelState, String> {
@@ -205,16 +263,48 @@ async fn connect_vpn(
     if lifecycle.busy.load(std::sync::atomic::Ordering::Acquire) {
         return Err("Дождись завершения отключения VPN".into());
     }
-    let link = {
+    let (link, policy, candidates) = {
         let library = state.library.lock().map_err(|_| "Хранилище недоступно")?;
         let profile = library
             .profiles
             .iter()
             .find(|p| p.id == id)
             .ok_or("Сервер не найден")?;
-        moth_core::share_link(profile).map_err(str::to_owned)?
+        let mut backups: Vec<_> = library
+            .profiles
+            .iter()
+            .filter(|p| p.id != id && !library.archived.contains(&p.id))
+            .collect();
+        backups.sort_by_key(|p| !library.favorites.contains(&p.id));
+        let candidates = if library.settings.failover {
+            backups
+                .into_iter()
+                .take(7)
+                .map(|p| {
+                    moth_core::share_link(p).map(|link| moth_ipc::ProfileLink { id: p.id, link })
+                })
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(str::to_owned)?
+        } else {
+            Vec::new()
+        };
+        (
+            moth_core::share_link(profile).map_err(str::to_owned)?,
+            library.settings.clone(),
+            candidates,
+        )
     };
-    tunnel_call(moth_ipc::Command::Connect { link }).await
+    if policy == moth_core::ConnectionSettings::default() {
+        tunnel_call(moth_ipc::Command::Connect { link }).await
+    } else {
+        tunnel_call(moth_ipc::Command::ConnectWithPolicy {
+            link,
+            policy: Box::new(policy),
+            profile_id: id,
+            candidates,
+        })
+        .await
+    }
 }
 fn main() {
     if std::env::args().nth(1).as_deref() == Some("--version") {
@@ -253,6 +343,7 @@ fn main() {
     }
     tauri::Builder::default()
         .manage(updater::state(None))
+        .manage(backup::BackupState::default())
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             tray::show_main(app)
         }))
@@ -268,6 +359,11 @@ fn main() {
             let directory = app.path().app_local_data_dir()?;
             let store = ProfileStore::new(directory);
             let library = store.load()?;
+            let automatic = library
+                .settings
+                .auto_connect
+                .then_some(library.selected)
+                .flatten();
             let engine_directory = if cfg!(debug_assertions) {
                 moth_engine::development_directory()?
             } else {
@@ -285,10 +381,22 @@ fn main() {
             });
             tray::setup(app)?;
             subscriptions::schedule(app.handle().clone());
+            if let Some(id) = automatic {
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    let _ = connect_vpn(id, handle.state::<AppState>(), handle.clone()).await;
+                });
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             get_snapshot,
+            backup::export_backup,
+            backup::preview_backup,
+            backup::confirm_backup,
+            backup::discard_backup,
+            backup::undo_backup,
+            save_connection_settings,
             subscriptions::save_subscription,
             subscriptions::delete_subscription,
             subscriptions::refresh_subscription,

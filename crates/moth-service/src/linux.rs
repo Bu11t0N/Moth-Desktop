@@ -174,7 +174,7 @@ async fn run(mut shutdown: watch::Receiver<bool>) -> Result<(), IpcError> {
     loop {
         tokio::select! {
             _=shutdown.changed()=>{if *shutdown.borrow(){break;}},
-            _=monitor.tick()=>tunnel.monitor().await,
+            _=monitor.tick()=>{let tunnel=tunnel.clone();let engines=engines.clone();tasks.spawn(async move{tunnel.monitor(&engines).await;Ok::<(),IpcError>(())});},
             accepted=listener.accept()=>{
                 let (mut stream,_)=accepted.map_err(|_|IpcError::Unavailable)?;
                 let Ok(permit)=capacity.clone().try_acquire_owned() else {continue;};

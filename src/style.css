@@ -788,3 +788,29 @@ textarea::placeholder {
 #source-form input:not([type=checkbox]),#source-form select {width:100%}
 #hwid-dialog {max-width:600px}
 #device-id {width:100%;box-sizing:border-box}
+
+.network-form {display:grid;gap:14px}
+.network-form label {display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.network-form input:not([type=checkbox]),.network-form select,.network-form textarea {width:100%;box-sizing:border-box;padding:10px;border:1px solid var(--border,#5b6068);border-radius:8px;background:var(--surface,#181c23);color:inherit;font:inherit}
+.network-grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px}
+.routing-rules fieldset {display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;border:1px solid var(--border,#5b6068);border-radius:8px;margin:12px 0}
+
+:root {--surface:#181c23;--border:#5b6068}
+:root[data-theme=light] {color-scheme:light;color:#202a23;background:#f2f5f2;--surface:#fff;--border:#bbc8be}
+[data-theme=light] body {background:#f2f5f2;color:#202a23}
+[data-theme=light] .sidebar,[data-theme=light] .connection-card,[data-theme=light] .selected-card,[data-theme=light] .progress-card,[data-theme=light] .settings-card,[data-theme=light] .server-row,[data-theme=light] dialog,[data-theme=light] .update-card {background:#fff;color:#202a23;border-color:#d0d9d2}
+[data-theme=light] .muted,[data-theme=light] .card-description,[data-theme=light] .server-info p,[data-theme=light] .endpoint,[data-theme=light] .dialog-help,[data-theme=light] .sidebar-bottom,[data-theme=light] .breadcrumb,[data-theme=light] .protection-note,[data-theme=light] .bottom-note,[data-theme=light] footer {color:#526257}
+[data-theme=light] h1,[data-theme=light] h2,[data-theme=light] h3,[data-theme=light] .brand,[data-theme=light] .setting strong {color:#202a23}
+[data-theme=light] button,[data-theme=light] .button,[data-theme=light] .nav-item {color:#24432c;border-color:#9eafa2;background:#edf3ed}
+[data-theme=light] .connect {background:#315d3b;color:#fff;border-color:#315d3b}
+[data-theme=light] .nav-item.active,[data-theme=light] .chosen {background:#e3eee3;border-color:#799a7e}
+[data-theme=light] .delete {color:#96382c;background:transparent}
+[data-theme=light] textarea,[data-theme=light] input,[data-theme=light] select {color:#202a23;background:#fff;border-color:#a9b9ad}
+[data-theme=light] label,[data-theme=light] .setting span {color:#46584b}
+[data-theme=light] header,[data-theme=light] footer,[data-theme=light] .setting {border-color:#d0d9d2}
+[data-theme=light] .tags span,[data-theme=light] .build-badge,[data-theme=light] .count,[data-theme=light] .tiny-label {background:#e7eee8;color:#34543a;border-color:#bbcbbf}
+[data-theme=light] .error,[data-theme=light] .dialog-error {color:#96382c;background:#fff0ec;border-color:#e2b7ab}
+[data-theme=light] .moth-orbit,[data-theme=light] .orbit-inner,[data-theme=light] .server-emblem,[data-theme=light] .server-symbol {background:#eff4ee;color:#315d3b;border-color:#c5d3c6}
+input:focus-visible,select:focus-visible,summary:focus-visible {outline:2px solid #68a773;outline-offset:3px}
+.server-info,.selected-name {overflow-wrap:anywhere}
+@media (prefers-reduced-motion:reduce) {*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}

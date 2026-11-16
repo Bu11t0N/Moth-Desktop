@@ -4,9 +4,13 @@ use url::Url;
 /// Internal transport to the service, never exposed to the webview or logs.
 /// Re-import before sending to prevent invalid persisted models crossing the boundary.
 pub fn share_link(profile: &Profile) -> Result<String, &'static str> {
+    if !matches!(profile.protocol, Protocol::Vless | Protocol::Trojan) {
+        return crate::extra_protocols::share(profile);
+    }
     let scheme = match profile.protocol {
         Protocol::Vless => "vless",
         Protocol::Trojan => "trojan",
+        _ => unreachable!(),
     };
     let mut url =
         Url::parse(&format!("{scheme}://placeholder:443")).map_err(|_| "Некорректный профиль")?;

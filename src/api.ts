@@ -10,8 +10,10 @@ export type Profile = {
   security: string;
 };
 export type Snapshot = {
+  settings?: ConnectionSettings;
   subscriptions?: Subscription[];
   favorites?: string[];
+  archived?:string[];
   profiles: Profile[];
   selected: string | null;
   version: string;
@@ -28,6 +30,8 @@ export type Snapshot = {
     killSwitch: boolean;
   };
 };
+export type RoutingRule={id:string;name:string;enabled:boolean;kind:"domain"|"suffix"|"keyword"|"cidr";value:string;target:"proxy"|"direct"|"block"};
+export type ConnectionSettings={mtu:number;ipv6:boolean;dns:string;bootstrapDns:string;rules:RoutingRule[];splitMode:"bypass"|"only";splitApps:string[];healthEnabled:boolean;healthIntervalSeconds:number;healthUrl:string;autoReconnect:boolean;failover:boolean;autoConnect:boolean;theme:"system"|"light"|"dark";language:"ru"|"en"};
 export type Subscription = {
   id: string; name: string; profiles: string[]; sendHwid: boolean; sendDeviceInfo: boolean;
   userAgent: string; refreshHours: number; vpnOnly: boolean; allowHttp: boolean;

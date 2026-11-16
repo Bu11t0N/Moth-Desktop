@@ -18,7 +18,7 @@ test("updater renders signed metadata as text and offers no installation after s
   await expect(page.getByText("<img src=x onerror=alert(1)>",{exact:true})).toBeVisible();
   await expect(page.locator(".update-card img")).toHaveCount(0);
   await page.getByRole("button",{name:"Скачать обновление",exact:true}).click();
-  await expect(page.getByRole("alert")).toContainText("Подпись обновления не прошла проверку");
+  await expect(page.locator(".update-card").getByRole("alert")).toContainText("Подпись обновления не прошла проверку");
   await expect(page.getByRole("button",{name:"Установить обновление",exact:true})).toHaveCount(0);
   await expect(page.getByRole("button",{name:"Подключить",exact:true})).toHaveCount(0);
 });
@@ -327,7 +327,7 @@ test("VPN follows service transitions and loses connected state when service dis
   );
   await expect(page.getByText("VPN сейчас не защищает трафик")).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Подключить", exact: true }),
+    page.getByRole("button", { name: "Отключить", exact: true }),
   ).toBeDisabled();
 });
 

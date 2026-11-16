@@ -15,7 +15,7 @@ pub use windows::{service_is_stopped, ServiceClient};
 #[cfg(windows)]
 pub mod windows;
 pub const PROTOCOL_VERSION: u16 = 2;
-pub const MAX_FRAME: usize = 32 * 1024;
+pub const MAX_FRAME: usize = 256 * 1024;
 pub const SERVICE_NAME: &str = "MothDesktopService";
 pub const PIPE_NAME: &str = r"\\.\pipe\Moth.Desktop.Service.v1";
 
@@ -31,15 +31,41 @@ pub struct Request {
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
 pub enum Command {
     Status {},
-    Probe { link: String },
-    Connect { link: String },
+    Probe {
+        link: String,
+    },
+    Connect {
+        link: String,
+    },
+    ConnectWithPolicy {
+        link: String,
+        policy: Box<moth_core::ConnectionSettings>,
+        profile_id: Uuid,
+        candidates: Vec<ProfileLink>,
+    },
     Disconnect {},
     TunnelStatus {},
     SubscriptionProxy {},
+    ActiveProfile {},
+}
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProfileLink {
+    pub id: Uuid,
+    pub link: String,
+}
+impl Drop for ProfileLink {
+    fn drop(&mut self) {
+        use zeroize::Zeroize;
+        self.link.zeroize();
+    }
 }
 impl Drop for Command {
     fn drop(&mut self) {
-        if let Self::Probe { link } | Self::Connect { link } = self {
+        if let Self::Probe { link }
+        | Self::Connect { link }
+        | Self::ConnectWithPolicy { link, .. } = self
+        {
             use zeroize::Zeroize;
             link.zeroize();
         }
@@ -69,6 +95,7 @@ pub enum Reply {
     Probe { latency_ms: u64 },
     Tunnel(TunnelState),
     SubscriptionProxy(DownloadProxy),
+    ActiveProfile(Option<moth_core::ProfileSummary>),
     Failure { code: ErrorCode },
 }
 

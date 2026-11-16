@@ -349,6 +349,15 @@ impl Tunnel {
 
 impl EngineSet {
     pub async fn connect(&self, profile: &Profile) -> Result<Tunnel, EngineError> {
+        self.connect_with_policy(profile, &moth_core::ConnectionSettings::default())
+            .await
+    }
+    pub async fn connect_with_policy(
+        &self,
+        profile: &Profile,
+        policy: &moth_core::ConnectionSettings,
+    ) -> Result<Tunnel, EngineError> {
+        policy.validate().map_err(|_| EngineError::InvalidConfig)?;
         let maintenance =
             moth_ipc::maintenance::TunnelLease::acquire().map_err(|_| EngineError::Maintenance)?;
         let address = timeout(
@@ -404,7 +413,10 @@ impl EngineSet {
         };
         let mut config = moth_core::xray_bridge_config(profile, &bridge);
         let outbound = &mut config["outbounds"][0];
-        let key = if profile.protocol == moth_core::Protocol::Vless {
+        let key = if matches!(
+            profile.protocol,
+            moth_core::Protocol::Vless | moth_core::Protocol::Vmess
+        ) {
             "vnext"
         } else {
             "servers"
@@ -412,7 +424,11 @@ impl EngineSet {
         outbound["settings"][key][0]["address"] = serde_json::json!(address.ip().to_string());
         outbound["streamSettings"]["sockopt"] =
             serde_json::json!({"interface":interface,"mark":MARK});
-        let mut tun_config = moth_core::sing_box_tun_config(&bridge);
+        let mut tun_config = moth_core::sing_box_tun_policy(&bridge, policy)
+            .map_err(|_| EngineError::InvalidConfig)?;
+        tun_config["outbounds"][1]["bind_interface"] = serde_json::json!(interface);
+        tun_config["outbounds"][1]["routing_mark"] = serde_json::json!(MARK);
+        protect_verifier(&mut tun_config, policy)?;
         tun_config["inbounds"][0]["interface_name"] = serde_json::json!(LINK);
         tun_config["inbounds"][0]["auto_route"] = serde_json::json!(false);
         tun_config["inbounds"][0]["strict_route"] = serde_json::json!(false);
@@ -478,7 +494,7 @@ impl EngineSet {
             if !session.alive() {
                 return Err(EngineError::Process);
             }
-            if matches!(client.get("https://cp.cloudflare.com/generate_204").send().await,Ok(response) if response.status()==reqwest::StatusCode::NO_CONTENT)
+            if matches!(client.get(&policy.health_url).send().await,Ok(response) if response.status()==reqwest::StatusCode::NO_CONTENT)
                 && session.alive()
             {
                 return Ok(session);

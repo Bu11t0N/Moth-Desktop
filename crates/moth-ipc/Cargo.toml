@@ -5,6 +5,7 @@ edition.workspace=true
 license.workspace=true
 
 [dependencies]
+moth-core = {path="../moth-core"}
 serde.workspace=true
 serde_json.workspace=true
 uuid.workspace=true

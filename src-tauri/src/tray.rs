@@ -21,8 +21,22 @@ pub struct DesktopLifecycle {
     #[cfg(target_os = "linux")]
     pub(super) tray_available: AtomicBool,
     status: MenuItem<tauri::Wry>,
+    open: MenuItem<tauri::Wry>,
     disconnect: MenuItem<tauri::Wry>,
     quit: MenuItem<tauri::Wry>,
+}
+fn localized(app: &AppHandle, ru: &'static str, en: &'static str) -> &'static str {
+    if app
+        .state::<super::AppState>()
+        .library
+        .lock()
+        .map(|l| l.settings.language == "en")
+        .unwrap_or(false)
+    {
+        en
+    } else {
+        ru
+    }
 }
 
 pub fn show_main(app: &AppHandle) {
@@ -60,9 +74,7 @@ where
     Fut: Future<Output = Result<TunnelState, IpcError>>,
 {
     let state = call(Command::TunnelStatus {}).await?;
-    if !state.owned_by_caller
-        || matches!(state.phase, TunnelPhase::Disconnected | TunnelPhase::Failed)
-    {
+    if !state.owned_by_caller || matches!(state.phase, TunnelPhase::Disconnected) {
         return Ok(());
     }
     let stopped = call(Command::Disconnect {}).await?;
@@ -145,9 +157,13 @@ async fn refresh(app: &AppHandle) {
                 TunnelPhase::Connected if !state.owned_by_caller => {
                     "VPN включён другой учётной записью"
                 }
+                TunnelPhase::Connected if state.error.is_some() => {
+                    "Доступность VPN не подтверждена"
+                }
                 TunnelPhase::Connected => "VPN подключён",
                 TunnelPhase::Connecting => "Подключаем VPN…",
                 TunnelPhase::Disconnecting => "Отключаем VPN…",
+                TunnelPhase::Failed if state.owned_by_caller => "Восстановление подключения",
                 TunnelPhase::Failed => "VPN отключён после ошибки",
                 TunnelPhase::Disconnected => "VPN не подключён",
             };
@@ -156,15 +172,38 @@ async fn refresh(app: &AppHandle) {
                 state.owned_by_caller
                     && matches!(
                         state.phase,
-                        TunnelPhase::Connected | TunnelPhase::Connecting
+                        TunnelPhase::Connected | TunnelPhase::Connecting | TunnelPhase::Failed
                     ),
             )
         }
         Err(_) => ("Служба VPN недоступна", false),
     };
+    let english = match text {
+        "VPN включён другой учётной записью" => {
+            "VPN belongs to another account"
+        }
+        "VPN подключён" => "VPN connected",
+        "Доступность VPN не подтверждена" => {
+            "VPN availability is unverified"
+        }
+        "Подключаем VPN…" => "Connecting VPN…",
+        "Отключаем VPN…" => "Disconnecting VPN…",
+        "Восстановление подключения" => "Recovering connection",
+        "VPN отключён после ошибки" => "VPN disconnected after an error",
+        "VPN не подключён" => "VPN disconnected",
+        _ => "VPN service unavailable",
+    };
+    let text = localized(app, text, english);
     let _ = lifecycle.status.set_text(text);
+    let _ = lifecycle
+        .open
+        .set_text(localized(app, "Открыть Мотылёк", "Open Moth"));
+    let _ = lifecycle
+        .disconnect
+        .set_text(localized(app, "Отключить VPN", "Disconnect VPN"));
+    let _ = lifecycle.quit.set_text(localized(app, "Выход", "Exit"));
     if let Some(tray) = &lifecycle.tray {
-        let _ = tray.set_tooltip(Some(format!("Мотылёк — {text}")));
+        let _ = tray.set_tooltip(Some(format!("Moth — {text}")));
     }
     let _ = lifecycle.disconnect.set_enabled(can_disconnect);
     let _ = lifecycle.quit.set_enabled(true);
@@ -227,6 +266,7 @@ pub fn setup(app: &tauri::App) -> tauri::Result<()> {
         #[cfg(target_os = "linux")]
         tray_available: AtomicBool::new(false),
         status,
+        open,
         disconnect,
         quit,
     });

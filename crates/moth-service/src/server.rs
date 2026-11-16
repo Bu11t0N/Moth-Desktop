@@ -69,7 +69,7 @@ pub async fn run(
     let mut tasks = JoinSet::new();
     loop {
         tokio::select! {
-            _=monitor.tick()=>tunnel.monitor().await,
+            _=monitor.tick()=>{let tunnel=tunnel.clone();let engines=engines.clone();tasks.spawn(async move{tunnel.monitor(&engines).await;});},
             _=shutdown.changed()=>{if *shutdown.borrow(){break;}},
             accepted=listener.connect()=>{
                 accepted.map_err(|_|IpcError::Unavailable)?;

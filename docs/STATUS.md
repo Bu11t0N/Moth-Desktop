@@ -1,11 +1,18 @@
-# Status — 2026-11-15
+# Status — 2026-11-16
 
 ## 0.3.4 candidate
 
 - Windows installer source is explicitly read as UTF-8. The license page uses a BOM-marked UTF-16LE build copy with CRLF, preserving the source text.
 - Added actual installer/uninstaller page text checks and screenshot artifacts under English and Russian user cultures. These checks do not change the installer language or system codepage.
 - Added the published 0.3.3 Windows package to installer upgrade/data-retention acceptance.
-- Native acceptance and publication of this candidate are pending. VPN behavior, IPC v2, engine pins and updater trust anchor are unchanged.
+- Candidate implementation adds protected multi-source subscriptions, per-source device-data consent, a random persistent desktop installation ID, bounded HTTP(S) downloads, origin-scoped headers, quota metadata and manual/scheduled/VPN-only refresh. Actual paid-provider account compatibility has not been tested.
+- Candidate library controls include search, favorites, sorting, archived selected/favorite servers and sequential measured batch probes. VMess AEAD, Shadowsocks AEAD/2022, SOCKS5 and HTTP(S) join the existing VLESS/Trojan families, with typed supported JSON/Clash extraction. Unknown or lossy server options fail the entire import.
+- Candidate connection policies include DNS/bootstrap, MTU, IPv6 rejection, ordered routing and executable-path splitting. Service recovery, HTTPS health checks and bounded candidate failover are opt-in. These policies require service 0.3.4; old default Connect remains IPC v2 compatible. New privileged network behavior still requires isolated native acceptance.
+- Candidate backups use AES-256-GCM and PBKDF2-HMAC-SHA256 from established libraries. Native preview returns counts only; merge/replace confirmation and session undo reject stale or expired transactions. Android v1 encrypted/plain backups import compatible profiles, favorites, selection and ordered rules. Phone HWID and package IDs are excluded; imported source consent/schedules and automatic connection are disabled. Android-specific settings and unsupported protocols are not silently imported.
+- Candidate themes and Russian/English UI have browser-level coverage. Keyboard, screen reader and native Windows/Linux delivery acceptance remain separate.
+- Local verification: 24 core tests, native stale/expired backup transaction test, workspace Clippy with warnings denied, Windows desktop compile, Linux service/platform cross-check, TypeScript/Vite build and 15 browser scenarios pass. Android encrypted format has an independent Node/OpenSSL fixture; this is not an Android device end-to-end test.
+- Unfinished expanded scope includes persistent kill switch, engine connection/traffic telemetry, diagnostics export, further Android protocol families, explicit general proxy/LAN mode and OS login autostart. No claim of complete Android parity or release readiness is made.
+- Native acceptance and publication of the expanded candidate are pending. Engine pins, production updater keys and release gates remain unchanged. No intermediate installer-only release is published.
 
 Version 0.3.3 is [published](https://github.com/Bu11t0N/Moth-Desktop/releases/tag/v0.3.3) for Windows x64 and the supported Ubuntu 24.04 x64 configuration. It uses unmodified pinned Xray/sing-box engines. The limitations below remain applicable.
 

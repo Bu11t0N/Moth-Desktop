@@ -20,6 +20,7 @@ import tarfile
 import tempfile
 import threading
 import uuid
+from provider_fixture import handle_provider
 
 
 def run(*args,cwd=None,env=None,quiet=False):
@@ -67,6 +68,8 @@ def main():
     class Handler(http.server.BaseHTTPRequestHandler):
         def log_message(self,*_): pass
         def do_GET(self):
+            if handle_provider(self,f'https://localhost:{server.server_port}'):
+                return
             mode=(directory/'mode').read_text().strip() if (directory/'mode').exists() else 'success'
             variant='fault' if mode=='rollback' else 'candidate'
             artifact=directory/variant
@@ -100,6 +103,8 @@ def main():
     code.write_text(text,encoding='utf-8')
     package_name='Moth-0.3.4-'+('windows-x64-setup.exe' if windows else 'linux-x64.deb')
     threading.Thread(target=server.serve_forever,daemon=True).start()
+    environment['MOTH_PROVIDER_BASE']=f'https://localhost:{server.server_port}/provider'
+    (directory/'provider-base').write_text(environment['MOTH_PROVIDER_BASE'],encoding='utf-8')
     run('node','scripts/fetch-engines.mjs',cwd=source)
     configurations={name:(source/name).read_text(encoding='utf-8') for name in ('Cargo.toml','package.json','src-tauri/tauri.conf.json','scripts/Service.ps1')}
     original_lock=(source/'Cargo.lock').read_text()
@@ -143,11 +148,19 @@ def main():
         run('node',str(source/'scripts/update-fixture-signer.cjs'),'sign',env=environment,quiet=True)
         # The caller's source trust anchor/endpoints remain byte-identical.
         run('git','diff','--exit-code','--','packaging/updater.pub','crates/moth-update/src/lib.rs',cwd=repo)
+        compiled=subprocess.run(['cargo','test','-p','moth-desktop','--locked','--no-run','--message-format=json'],cwd=source,check=True,stdout=subprocess.PIPE,text=True)
+        binaries=[json.loads(line).get('executable') for line in compiled.stdout.splitlines() if line.startswith('{') and json.loads(line).get('reason')=='compiler-artifact' and json.loads(line).get('target',{}).get('name')=='moth-desktop' and json.loads(line).get('profile',{}).get('test')]
+        binaries=[path for path in binaries if path]
+        if len(binaries)!=1:raise RuntimeError('Exactly one native provider test executable required')
+        provider_test=binaries[0]
+        (directory/'provider-test-path').write_text(provider_test,encoding='utf-8')
         if windows:
             der=ssl.PEM_cert_to_DER_cert((directory/'ca.crt').read_text())
             thumbprint=hashlib.sha1(der).hexdigest()
             run('certutil','-addstore','-f','Root',str(directory/'ca.crt'),quiet=True)
-            try: run('pwsh','-NoProfile','-File',str(repo/'scripts/test-signed-updates-windows.ps1'),'-FixtureDirectory',str(directory))
+            try:
+                run(provider_test,'native_provider_fixture','--ignored',env=environment)
+                run('pwsh','-NoProfile','-File',str(repo/'scripts/test-signed-updates-windows.ps1'),'-FixtureDirectory',str(directory))
             finally: run('certutil','-delstore','Root',thumbprint,quiet=True)
         else:
             run('sudo','--non-interactive','--preserve-env=GITHUB_ACTIONS,RUNNER_OS',sys.executable,str(repo/'scripts/test-signed-updates-linux.py'),str(directory))

@@ -118,7 +118,7 @@ async fn download(
         }
         let mut request = client.get(destination.clone());
         for (key, value) in source
-            .headers(&destination, device)
+            .headers_for_device(&destination, device, &moth_platform::subscription_device())
             .map_err(str::to_owned)?
         {
             request = request.header(key, value);
@@ -309,4 +309,63 @@ pub fn schedule(app: tauri::AppHandle) {
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[tokio::test]
+    #[ignore = "requires the disposable hosted HTTPS provider fixture and its trusted CA"]
+    async fn native_provider_fixture() {
+        assert!(std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true"));
+        let base = std::env::var("MOTH_PROVIDER_BASE").expect("fixture endpoint required");
+        let device = Uuid::parse_str("00000000-0000-4000-8000-000000000009").unwrap();
+        let make = |case: &str, consent: bool| Subscription {
+            id: Uuid::new_v4(),
+            name: "Fixture".into(),
+            url: format!("{base}/{case}"),
+            profiles: Vec::new(),
+            send_hwid: consent,
+            send_device_info: consent,
+            user_agent: "Moth/fixture".into(),
+            refresh_hours: 0,
+            vpn_only: false,
+            allow_http: false,
+            generation: 0,
+            last_attempt: None,
+            last_success: None,
+            last_error: None,
+            quota: Quota::default(),
+        };
+        for (case, consent, count) in [
+            ("opt-out", false, 2),
+            ("device", true, 2),
+            ("redirect", true, 2),
+            ("cross", true, 2),
+            ("json", false, 1),
+            ("yaml", false, 1),
+        ] {
+            let result = download(&make(case, consent), device).await;
+            assert!(result.is_ok(), "synthetic provider request failed");
+            let (profiles, quota) = result.unwrap();
+            assert!(profiles.len() == count);
+            assert!(quota.used_bytes == Some(30) && quota.total_bytes == Some(100));
+        }
+        for case in ["partial", "limit", "denied", "oversize", "downgrade"] {
+            let result = download(&make(case, false), device).await;
+            assert!(result.is_err());
+            let error = result.err().unwrap();
+            assert!(
+                !error.contains(&base)
+                    && !error.contains(&device.to_string())
+                    && !error.contains("synthetic")
+            );
+        }
+        let mut source = make("opt-out", false);
+        source.vpn_only = true;
+        assert!(
+            download(&source, device).await.is_err(),
+            "VPN-only must not fall back when no owned tunnel exists"
+        );
+    }
 }

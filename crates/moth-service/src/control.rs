@@ -34,6 +34,7 @@ pub async fn dispatch(
                 })
             }
             Command::TunnelStatus {} => tunnel.status(caller).await,
+            Command::ActiveProfile {} => tunnel.active_profile(caller).await,
             Command::SubscriptionProxy {} if !development => {
                 tunnel.subscription_proxy(caller).await
             }
@@ -48,6 +49,50 @@ pub async fn dispatch(
                 _ => Reply::Failure {
                     code: ErrorCode::InvalidProfile,
                 },
+            },
+            Command::ConnectWithPolicy {
+                link,
+                policy,
+                profile_id,
+                candidates,
+            } if !development && policy.validate().is_ok() && candidates.len() <= 7 => {
+                match moth_core::import_links(link) {
+                    Ok(mut profiles) if profiles.len() == 1 => {
+                        let mut profile = profiles.remove(0);
+                        profile.id = *profile_id;
+                        let mut backups = Vec::new();
+                        let mut ids = std::collections::HashSet::from([*profile_id]);
+                        for candidate in candidates {
+                            if !ids.insert(candidate.id) {
+                                return Reply::Failure {
+                                    code: ErrorCode::InvalidProfile,
+                                };
+                            }
+                            let Ok(mut parsed) = moth_core::import_links(&candidate.link) else {
+                                return Reply::Failure {
+                                    code: ErrorCode::InvalidProfile,
+                                };
+                            };
+                            if parsed.len() != 1 {
+                                return Reply::Failure {
+                                    code: ErrorCode::InvalidProfile,
+                                };
+                            }
+                            let mut parsed = parsed.remove(0);
+                            parsed.id = candidate.id;
+                            backups.push(parsed);
+                        }
+                        tunnel
+                            .connect_with_candidates(caller, &profile, engines, policy, &backups)
+                            .await
+                    }
+                    _ => Reply::Failure {
+                        code: ErrorCode::InvalidProfile,
+                    },
+                }
+            }
+            Command::ConnectWithPolicy { .. } => Reply::Failure {
+                code: ErrorCode::Unsupported,
             },
             Command::Connect { .. } | Command::Disconnect {} => Reply::Failure {
                 code: ErrorCode::Unsupported,

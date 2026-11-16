@@ -5,6 +5,47 @@ use std::path::PathBuf;
 #[cfg(not(target_os = "linux"))]
 use std::{fs, io::Write};
 use zeroize::Zeroizing;
+/// Non-identifying OS/version/model headers. No host name, account or serial.
+pub fn subscription_device() -> moth_core::SubscriptionDevice {
+    #[cfg(windows)]
+    let version = unsafe {
+        let mut info: windows_sys::Win32::System::SystemInformation::OSVERSIONINFOW =
+            std::mem::zeroed();
+        info.dwOSVersionInfoSize = std::mem::size_of_val(&info) as u32;
+        if windows_sys::Wdk::System::SystemServices::RtlGetVersion(&mut info) == 0 {
+            format!(
+                "{}.{}.{}",
+                info.dwMajorVersion, info.dwMinorVersion, info.dwBuildNumber
+            )
+        } else {
+            "unknown".into()
+        }
+    };
+    #[cfg(not(windows))]
+    let version = {
+        let release = std::fs::read_to_string("/etc/os-release").unwrap_or_default();
+        let field = |key: &str| {
+            release
+                .lines()
+                .find_map(|line| {
+                    line.strip_prefix(key).map(|v| {
+                        v.trim_matches('"')
+                            .chars()
+                            .filter(|c| c.is_ascii_alphanumeric() || "._-".contains(*c))
+                            .take(30)
+                            .collect::<String>()
+                    })
+                })
+                .unwrap_or_default()
+        };
+        format!("{} {}", field("ID="), field("VERSION_ID="))
+    };
+    moth_core::SubscriptionDevice {
+        os: if cfg!(windows) { "Windows" } else { "Linux" }.into(),
+        os_version: version,
+        model: format!("Desktop {}", std::env::consts::ARCH),
+    }
+}
 #[cfg(target_os = "linux")]
 mod linux;
 

@@ -5,6 +5,11 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 use url::Url;
 use uuid::Uuid;
+pub struct SubscriptionDevice {
+    pub os: String,
+    pub os_version: String,
+    pub model: String,
+}
 
 #[derive(Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
@@ -150,6 +155,22 @@ impl Subscription {
         destination: &Url,
         hwid: Uuid,
     ) -> Result<BTreeMap<String, String>, &'static str> {
+        self.headers_for_device(
+            destination,
+            hwid,
+            &SubscriptionDevice {
+                os: if cfg!(windows) { "Windows" } else { "Linux" }.into(),
+                os_version: "unknown".into(),
+                model: format!("Desktop {}", std::env::consts::ARCH),
+            },
+        )
+    }
+    pub fn headers_for_device(
+        &self,
+        destination: &Url,
+        hwid: Uuid,
+        device: &SubscriptionDevice,
+    ) -> Result<BTreeMap<String, String>, &'static str> {
         let original = subscription_url(&self.url, self.allow_http)?;
         let mut out = BTreeMap::from([
             ("User-Agent".into(), self.user_agent.clone()),
@@ -164,16 +185,16 @@ impl Subscription {
         {
             out.insert("x-hwid".into(), hwid.to_string());
             if self.send_device_info {
-                out.insert(
-                    "x-device-os".into(),
-                    if cfg!(windows) { "Windows" } else { "Linux" }.into(),
-                );
-                // Deliberately no machine name, serial number or account name.
-                out.insert("x-ver-os".into(), std::env::consts::OS.into());
-                out.insert(
-                    "x-device-model".into(),
-                    format!("Desktop {}", std::env::consts::ARCH),
-                );
+                for (key, value, max) in [
+                    ("x-device-os", &device.os, 64),
+                    ("x-ver-os", &device.os_version, 64),
+                    ("x-device-model", &device.model, 120),
+                ] {
+                    if value.len() > max || value.bytes().any(|b| !(32..127).contains(&b)) {
+                        return Err("Некорректные сведения об устройстве");
+                    }
+                    out.insert(key.into(), value.clone());
+                }
             }
         }
         Ok(out)
@@ -278,12 +299,24 @@ impl Library {
             if seen.iter().any(|v| v.same_server(&p)) {
                 continue;
             }
-            if let Some(existing) = self
-                .profiles
-                .iter()
-                .find(|v| old.contains(&v.id) && v.same_server(&p))
-            {
+            if let Some(existing) = self.profiles.iter().find(|v| {
+                (old.contains(&v.id) || self.archived.contains(&v.id)) && v.same_server(&p)
+            }) {
                 p.id = existing.id;
+            } else {
+                let same_endpoint: Vec<_> = self
+                    .profiles
+                    .iter()
+                    .filter(|v| old.contains(&v.id))
+                    .filter(|v| {
+                        let mut candidate = (*v).clone();
+                        candidate.credential = p.credential.clone();
+                        candidate.same_server(&p)
+                    })
+                    .collect();
+                if same_endpoint.len() == 1 && !seen.iter().any(|v| v.id == same_endpoint[0].id) {
+                    p.id = same_endpoint[0].id;
+                }
             }
             seen.push(p);
         }
@@ -291,8 +324,26 @@ impl Library {
             return Err("В ответе нет поддерживаемых серверов");
         }
         let new_ids: Vec<_> = seen.iter().map(|p| p.id).collect();
-        self.profiles.retain(|p| !old.contains(&p.id));
+        let preserved: Vec<_> = self
+            .profiles
+            .iter()
+            .filter(|p| {
+                old.contains(&p.id)
+                    && !new_ids.contains(&p.id)
+                    && (self.selected == Some(p.id) || self.favorites.contains(&p.id))
+            })
+            .cloned()
+            .collect();
+        self.profiles
+            .retain(|p| !old.contains(&p.id) && !new_ids.contains(&p.id));
         self.profiles.extend(seen);
+        self.archived.retain(|id| !new_ids.contains(id));
+        for p in preserved {
+            if !self.archived.contains(&p.id) {
+                self.archived.push(p.id);
+            }
+            self.profiles.push(p);
+        }
         let source = self.subscriptions.iter_mut().find(|s| s.id == id).unwrap();
         source.profiles = new_ids;
         source.quota = quota;
@@ -394,5 +445,34 @@ mod tests {
         let saved = serde_json::to_string(&lib).unwrap();
         let next: Library = serde_json::from_str(&saved).unwrap();
         assert_eq!(lib.device_id, next.device_id);
+    }
+    #[test]
+    fn rotated_credentials_keep_identity_and_removed_selected_is_archived() {
+        let mut library = Library::default();
+        let id = library.put_subscription(input()).unwrap();
+        let original = crate::import_links("trojan://synthetic-old@example.com:443#A").unwrap();
+        library
+            .apply_subscription(id, 0, original, Quota::default(), 1)
+            .unwrap();
+        let selected = library.selected.unwrap();
+        library.favorites.push(selected);
+        let rotated = crate::import_links("trojan://synthetic-new@example.com:443#A").unwrap();
+        library
+            .apply_subscription(id, 0, rotated, Quota::default(), 2)
+            .unwrap();
+        assert!(library.selected == Some(selected));
+        assert!(library.favorites.contains(&selected));
+        assert!(library
+            .profiles
+            .iter()
+            .any(|p| p.id == selected && p.credential == "synthetic-new"));
+        let replacement =
+            crate::import_links("trojan://synthetic-other@other.example.com:443#B").unwrap();
+        library
+            .apply_subscription(id, 0, replacement, Quota::default(), 3)
+            .unwrap();
+        assert!(library.selected == Some(selected));
+        assert!(library.archived.contains(&selected));
+        assert!(library.validate().is_ok());
     }
 }

@@ -12,3 +12,8 @@ uuid.workspace = true
 url = "2"
 base64 = "0.22"
 percent-encoding = "2"
+serde_yaml_ng = "=0.10.0"
+aes-gcm = "0.10"
+pbkdf2 = "0.12"
+sha2 = "0.10"
+zeroize = "1"

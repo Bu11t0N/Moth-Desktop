@@ -19,6 +19,63 @@ pub fn sing_box_tun_config(bridge: &LocalBridge) -> Value {
     })
 }
 
+pub fn sing_box_tun_policy(
+    bridge: &LocalBridge,
+    settings: &crate::ConnectionSettings,
+) -> Result<Value, &'static str> {
+    use crate::{RuleKind, RuleTarget, SplitMode};
+    settings.validate()?;
+    let mut config = sing_box_tun_config(bridge);
+    config["inbounds"][0]["mtu"] = json!(settings.mtu);
+    let mut dns = crate::dns_server(&settings.dns)?;
+    dns["tag"] = json!("dns-remote");
+    dns["detour"] = json!("proxy");
+    let mut bootstrap = crate::dns_server(&settings.bootstrap_dns)?;
+    bootstrap["tag"] = json!("bootstrap");
+    bootstrap["detour"] = json!("direct");
+    config["dns"] = json!({"servers":[dns,bootstrap],"final":"dns-remote","strategy":if settings.ipv6{"prefer_ipv4"}else{"ipv4_only"}});
+    config["outbounds"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"type":"direct","tag":"direct"}));
+    config["route"]["default_domain_resolver"] = json!("bootstrap");
+    let mut rules = vec![
+        json!({"inbound":"subscription-in","action":"route","outbound":"proxy"}),
+        json!({"inbound":"tun-in","action":"sniff"}),
+        json!({"protocol":"dns","action":"hijack-dns"}),
+    ];
+    // Retain IPv6 capture routes and reject IPv6 rather than silently sending it
+    // through a physical adapter when the user disables IPv6 through the VPN.
+    if !settings.ipv6 {
+        rules.push(json!({"ip_version":6,"action":"reject"}));
+    }
+    if !settings.split_apps.is_empty() {
+        rules.push(json!({"process_path":settings.split_apps,"invert":settings.split_mode==SplitMode::Only,"action":"route","outbound":"direct"}));
+    }
+    for rule in settings.rules.iter().filter(|r| r.enabled) {
+        let key = match rule.kind {
+            RuleKind::Domain => "domain",
+            RuleKind::Suffix => "domain_suffix",
+            RuleKind::Keyword => "domain_keyword",
+            RuleKind::Cidr => "ip_cidr",
+        };
+        let mut value = json!({key:[rule.value]});
+        if rule.target == RuleTarget::Block {
+            value["action"] = json!("reject");
+        } else {
+            value["action"] = json!("route");
+            value["outbound"] = json!(if rule.target == RuleTarget::Direct {
+                "direct"
+            } else {
+                "proxy"
+            });
+        }
+        rules.push(value);
+    }
+    config["route"]["rules"] = json!(rules);
+    Ok(config)
+}
+
 pub fn xray_bridge_config(profile: &crate::Profile, bridge: &LocalBridge) -> Value {
     let mut config = crate::xray_check_config(profile);
     config["inbounds"] = json!([{"tag":"moth-bridge","listen":"127.0.0.1","port":bridge.port,"protocol":"vless","settings":{"decryption":"none","clients":[{"id":bridge.credential.to_string()}]}}]);

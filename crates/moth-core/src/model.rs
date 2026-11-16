@@ -6,6 +6,10 @@ use uuid::Uuid;
 pub enum Protocol {
     Vless,
     Trojan,
+    Vmess,
+    Shadowsocks,
+    Socks,
+    Http,
 }
 
 impl Protocol {
@@ -13,8 +17,21 @@ impl Protocol {
         match self {
             Self::Vless => "VLESS",
             Self::Trojan => "Trojan",
+            Self::Vmess => "VMess",
+            Self::Shadowsocks => "Shadowsocks",
+            Self::Socks => "SOCKS5",
+            Self::Http => "HTTP",
         }
     }
+}
+
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProxyOptions {
+    #[serde(default)]
+    pub username: String,
+    #[serde(default)]
+    pub method: String,
 }
 
 // Deliberately no Debug: profiles contain credentials.
@@ -30,6 +47,8 @@ pub struct Profile {
     pub tls: Tls,
     pub transport: Transport,
     pub flow: Option<String>,
+    #[serde(default)]
+    pub options: ProxyOptions,
 }
 
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -67,7 +86,7 @@ pub enum Transport {
     },
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ProfileSummary {
     pub id: Uuid,
@@ -110,6 +129,7 @@ impl Profile {
             && self.tls == other.tls
             && self.transport == other.transport
             && self.flow == other.flow
+            && self.options == other.options
     }
 }
 
@@ -122,8 +142,12 @@ pub struct Library {
     pub subscriptions: Vec<crate::Subscription>,
     #[serde(default)]
     pub favorites: Vec<Uuid>,
+    #[serde(default)]
+    pub archived: Vec<Uuid>,
     #[serde(default = "Uuid::new_v4")]
     pub device_id: Uuid,
+    #[serde(default)]
+    pub settings: crate::ConnectionSettings,
 }
 
 impl Default for Library {
@@ -133,7 +157,9 @@ impl Default for Library {
             selected: None,
             subscriptions: Vec::new(),
             favorites: Vec::new(),
+            archived: Vec::new(),
             device_id: Uuid::new_v4(),
+            settings: Default::default(),
         }
     }
 }
@@ -162,6 +188,7 @@ impl Library {
         let before = self.profiles.len();
         self.profiles.retain(|p| p.id != id);
         self.favorites.retain(|p| *p != id);
+        self.archived.retain(|p| *p != id);
         for source in &mut self.subscriptions {
             source.profiles.retain(|p| *p != id);
         }
@@ -171,6 +198,7 @@ impl Library {
         before != self.profiles.len()
     }
     pub fn validate(&self) -> Result<(), &'static str> {
+        self.settings.validate()?;
         if self.device_id.is_nil() || self.subscriptions.len() > 100 {
             return Err("Некорректное хранилище подписок");
         }
@@ -188,6 +216,13 @@ impl Library {
             }
         }
         if self
+            .archived
+            .iter()
+            .any(|id| members.contains(id) || !self.profiles.iter().any(|p| p.id == *id))
+        {
+            return Err("Некорректные сохранённые серверы");
+        }
+        if self
             .favorites
             .iter()
             .any(|id| !self.profiles.iter().any(|p| p.id == *id))
@@ -203,7 +238,8 @@ impl Library {
                 || p.port == 0
                 || p.host.is_empty()
                 || p.name.chars().count() > 160
-                || p.credential.is_empty()
+                || (p.credential.is_empty()
+                    && !matches!(p.protocol, Protocol::Socks | Protocol::Http))
             {
                 return Err("Некорректное хранилище профилей");
             }
@@ -229,6 +265,20 @@ pub fn xray_check_config(profile: &Profile) -> serde_json::Value {
         }
         Protocol::Trojan => {
             json!({"servers":[{"address":profile.host,"port":profile.port,"password":profile.credential}]})
+        }
+        Protocol::Vmess => {
+            json!({"vnext":[{"address":profile.host,"port":profile.port,"users":[{"id":profile.credential,"alterId":0,"security":profile.options.method}]}]})
+        }
+        Protocol::Shadowsocks => {
+            json!({"servers":[{"address":profile.host,"port":profile.port,"method":profile.options.method,"password":profile.credential}]})
+        }
+        Protocol::Socks | Protocol::Http => {
+            let mut server = json!({"address":profile.host,"port":profile.port});
+            if !profile.options.username.is_empty() {
+                server["users"] =
+                    json!([{"user":profile.options.username,"pass":profile.credential}]);
+            }
+            json!({"servers":[server]})
         }
     };
     let mut stream = json!({});
@@ -279,5 +329,5 @@ pub fn xray_check_config(profile: &Profile) -> serde_json::Value {
             stream["realitySettings"] = json!({"serverName":server_name,"fingerprint":fingerprint,"publicKey":public_key,"shortId":short_id});
         }
     }
-    json!({"log":{"loglevel":"none"},"outbounds":[{"tag":"proxy","protocol":match profile.protocol {Protocol::Vless=>"vless",Protocol::Trojan=>"trojan"},"settings":settings,"streamSettings":stream}]})
+    json!({"log":{"loglevel":"none"},"outbounds":[{"tag":"proxy","protocol":match profile.protocol {Protocol::Vless=>"vless",Protocol::Trojan=>"trojan",Protocol::Vmess=>"vmess",Protocol::Shadowsocks=>"shadowsocks",Protocol::Socks=>"socks",Protocol::Http=>"http"},"settings":settings,"streamSettings":stream}]})
 }

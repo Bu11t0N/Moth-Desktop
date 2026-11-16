@@ -37,6 +37,9 @@ def main():
         with certificate.open('xb') as target: target.write((fixture/'ca.crt').read_bytes())
         certificate.chmod(0o644)
         run('update-ca-certificates')
+        os.environ['MOTH_PROVIDER_BASE']=(fixture/'provider-base').read_text(encoding='utf-8').strip()
+        run((fixture/'provider-test-path').read_text(encoding='utf-8').strip(),'native_provider_fixture','--ignored')
+        os.environ.pop('MOTH_PROVIDER_BASE',None)
         run('apt-get','install','--yes','--no-install-recommends',str(fixture/'baseline/Moth-0.3.3-linux-x64.deb'))
         installed=True
         with socket.socket() as listener:

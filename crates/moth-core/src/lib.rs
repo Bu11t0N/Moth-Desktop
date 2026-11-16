@@ -1,11 +1,18 @@
 //! UI-independent Moth domain model. No Tauri, OS calls or network access.
+mod backup;
+mod extra_protocols;
+mod formats;
 mod import;
 mod model;
+mod settings;
+pub use backup::*;
 mod share;
 mod subscriptions;
+pub use settings::*;
 mod tunnel;
 pub use import::{import_links, ImportError};
 pub use model::*;
 pub use share::share_link;
 pub use subscriptions::*;
+pub use tunnel::sing_box_tun_policy;
 pub use tunnel::{sing_box_tun_config, xray_bridge_config, LocalBridge};

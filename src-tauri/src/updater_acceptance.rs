@@ -163,7 +163,7 @@ async fn check(app: &tauri::AppHandle) -> Result<(), &'static str> {
             return Ok(());
         }
     }
-    let tunnel = super::tunnel_status()
+    let tunnel = super::tunnel_status(app.clone())
         .await
         .map_err(|_| "VPN after rejection")?;
     if tunnel.phase != moth_ipc::TunnelPhase::Connected || !tunnel.owned_by_caller {

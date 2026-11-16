@@ -12,6 +12,61 @@ pub use linux_tunnel::{recover_network, Tunnel};
 mod tests;
 use job::ProcessJob;
 use moth_core::{LocalBridge, Profile};
+
+/// HTTPS health measurement forced through the authenticated active-tunnel
+/// listener. This client has no direct or environment-proxy fallback.
+pub async fn health_through_proxy(
+    proxy: &moth_ipc::DownloadProxy,
+    url: &str,
+) -> Result<(), EngineError> {
+    let proxy = reqwest::Proxy::all(format!("http://127.0.0.1:{}", proxy.port))
+        .map_err(|_| EngineError::Probe)?
+        .basic_auth(&proxy.username, &proxy.password);
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .proxy(proxy)
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(Duration::from_secs(8))
+        .build()
+        .map_err(|_| EngineError::Probe)?;
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|_| EngineError::Probe)?;
+    if !response.status().is_success() {
+        return Err(EngineError::Probe);
+    }
+    Ok(())
+}
+
+fn protect_verifier(
+    config: &mut serde_json::Value,
+    policy: &moth_core::ConnectionSettings,
+) -> Result<(), EngineError> {
+    let path = std::env::current_exe()
+        .map_err(|_| EngineError::Process)?
+        .to_string_lossy()
+        .into_owned();
+    for app in &policy.split_apps {
+        if (cfg!(windows) && !(app.len() > 3 && app.as_bytes()[1] == b':'))
+            || (!cfg!(windows) && !app.starts_with('/'))
+            || app.eq_ignore_ascii_case(&path)
+        {
+            return Err(EngineError::InvalidConfig);
+        }
+    }
+    // The service's TUN-sourced startup verifier must not be excluded by an
+    // only-selected-apps rule. This remains real TUN verification, not a probe.
+    config["route"]["rules"]
+        .as_array_mut()
+        .ok_or(EngineError::InvalidConfig)?
+        .insert(
+            1,
+            serde_json::json!({"process_path":[path],"action":"route","outbound":"proxy"}),
+        );
+    Ok(())
+}
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{

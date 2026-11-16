@@ -7,6 +7,10 @@ fn engines() -> EngineSet {
 fn fixture_links() -> Vec<String> {
     let base = "vless://c6b3a07a-8bf9-4a18-905b-ea41642633c3@example.com:443";
     let mut links = vec![];
+    let additional = r#"{"outbounds":[{"type":"vmess","tag":"VMess","server":"example.com","server_port":443,"uuid":"00000000-0000-4000-8000-000000000001","tls":{"enabled":true}},{"type":"shadowsocks","tag":"SS","server":"example.com","server_port":443,"method":"aes-256-gcm","password":"synthetic"},{"type":"socks","tag":"SOCKS","server":"example.com","server_port":1080,"username":"synthetic","password":"synthetic"},{"type":"http","tag":"HTTP","server":"example.com","server_port":8080,"username":"synthetic","password":"synthetic"}]}"#;
+    for profile in moth_core::import_links(additional).unwrap() {
+        links.push(moth_core::share_link(&profile).unwrap());
+    }
     for transport in [
         "type=tcp",
         "type=ws&path=%2Fvpn&host=example.com",
@@ -37,6 +41,32 @@ async fn pinned_engines_accept_supported_profile_matrix_and_tun_plan() {
             .await
             .unwrap_or_else(|error| panic!("matrix row {index}: {error}"));
     }
+    let bridge = LocalBridge {
+        port: 15491,
+        credential: Uuid::new_v4(),
+    };
+    let policy = moth_core::ConnectionSettings {
+        mtu: 1400,
+        ipv6: false,
+        dns: "9.9.9.9".into(),
+        split_apps: vec![if cfg!(windows) {
+            "C:\\Windows\\System32\\curl.exe"
+        } else {
+            "/usr/bin/curl"
+        }
+        .into()],
+        rules: vec![moth_core::RoutingRule {
+            id: Uuid::new_v4(),
+            name: "Fixture".into(),
+            enabled: true,
+            kind: moth_core::RuleKind::Suffix,
+            value: "example.com".into(),
+            target: moth_core::RuleTarget::Block,
+        }],
+        ..Default::default()
+    };
+    let config = moth_core::sing_box_tun_policy(&bridge, &policy).unwrap();
+    engines().validate(Engine::SingBox, &config).await.unwrap();
     // A regression in config generation must not be hidden by a zero exit assumption.
     assert!(matches!(
         engines()
