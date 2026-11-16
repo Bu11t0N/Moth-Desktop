@@ -1,4 +1,16 @@
 use super::*;
+#[cfg(windows)]
+#[test]
+fn windows_process_paths_use_anchored_literal_case_insensitive_patterns() {
+    assert_eq!(
+        windows_process_pattern(r"C:\Windows/System32/curl.exe"),
+        r"(?i)^C:\\Windows\\System32\\curl\.exe$"
+    );
+    assert_eq!(
+        windows_process_pattern(r"\\?\C:\Apps\Client (1).exe"),
+        r"(?i)^C:\\Apps\\Client \(1\)\.exe$"
+    );
+}
 use tokio::io::AsyncReadExt;
 
 fn engines() -> EngineSet {
@@ -65,7 +77,8 @@ async fn pinned_engines_accept_supported_profile_matrix_and_tun_plan() {
         }],
         ..Default::default()
     };
-    let config = moth_core::sing_box_tun_policy(&bridge, &policy).unwrap();
+    let mut config = moth_core::sing_box_tun_policy(&bridge, &policy).unwrap();
+    protect_verifier(&mut config, &policy).unwrap();
     engines().validate(Engine::SingBox, &config).await.unwrap();
     // A regression in config generation must not be hidden by a zero exit assumption.
     assert!(matches!(

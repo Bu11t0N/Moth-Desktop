@@ -51,7 +51,11 @@ fn protect_verifier(
     for app in &policy.split_apps {
         if (cfg!(windows) && !(app.len() > 3 && app.as_bytes()[1] == b':'))
             || (!cfg!(windows) && !app.starts_with('/'))
-            || app.eq_ignore_ascii_case(&path)
+            || (cfg!(windows)
+                && app
+                    .replace('/', "\\")
+                    .eq_ignore_ascii_case(&path.replace('/', "\\")))
+            || (!cfg!(windows) && app == &path)
         {
             return Err(EngineError::InvalidConfig);
         }
@@ -65,7 +69,44 @@ fn protect_verifier(
             1,
             serde_json::json!({"process_path":[path],"action":"route","outbound":"proxy"}),
         );
+    #[cfg(windows)]
+    {
+        // sing-box 1.12 uses exact case-sensitive process_path map keys even
+        // on Windows. Match literal Win32 paths with Windows casing/separator
+        // semantics; never use an unescaped user-provided regex.
+        for rule in config["route"]["rules"].as_array_mut().unwrap() {
+            if let Some(paths) = rule.as_object_mut().and_then(|r| r.remove("process_path")) {
+                let patterns = paths
+                    .as_array()
+                    .ok_or(EngineError::InvalidConfig)?
+                    .iter()
+                    .map(|p| {
+                        p.as_str()
+                            .map(windows_process_pattern)
+                            .ok_or(EngineError::InvalidConfig)
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                rule["process_path_regex"] = serde_json::json!(patterns);
+            }
+        }
+    }
     Ok(())
+}
+#[cfg(windows)]
+fn windows_process_pattern(path: &str) -> String {
+    let normalized = path
+        .strip_prefix("\\\\?\\")
+        .unwrap_or(path)
+        .replace('/', "\\");
+    let mut pattern = String::from("(?i)^");
+    for c in normalized.chars() {
+        if ".+*?()|[]{}^$\\".contains(c) {
+            pattern.push('\\');
+        }
+        pattern.push(c);
+    }
+    pattern.push('$');
+    pattern
 }
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};

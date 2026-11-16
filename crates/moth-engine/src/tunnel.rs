@@ -351,7 +351,7 @@ mod acceptance {
                 .status()
                 .await
                 .unwrap();
-            assert!(selected.success() != (split == Some(moth_core::SplitMode::Bypass)));
+            assert!(selected.success() != (split == Some(moth_core::SplitMode::Bypass)), "selected process did not follow its per-app policy (bypass={}, only={}, exit={selected})", split == Some(moth_core::SplitMode::Bypass), split == Some(moth_core::SplitMode::Only));
             if split == Some(moth_core::SplitMode::Only) {
                 let other=Command::new("pwsh").args(["-NoProfile","-Command","try { $null=Invoke-WebRequest -NoProxy -TimeoutSec 3 -Uri 'http://198.18.0.123:18080/generate_204'; exit 0 } catch { exit 1 }"]).stdout(Stdio::null()).stderr(Stdio::null()).kill_on_drop(true).status().await.unwrap();
                 assert!(!other.success());
