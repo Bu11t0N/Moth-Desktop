@@ -34,7 +34,7 @@ ShowUninstDetails show
 !insertmacro MUI_PAGE_LICENSE "${LICENSE_FILE}"
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
-!define MUI_UNCONFIRMPAGE_TEXT_TOP "Будут удалены приложение и системная служба.$\r$\n$\r$\nПрофили и настройки пользователей сохранятся. Изменённые файлы и резервные копии прежних установок также останутся. Перед удалением выберите «Выход» в меню трея."
+!define MUI_UNCONFIRMPAGE_TEXT_TOP "Приложение и служба будут удалены. Профили, настройки, изменённые файлы и резервные копии сохранятся. Сначала выберите «Выход» в трее."
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "Russian"

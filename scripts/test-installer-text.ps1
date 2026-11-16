@@ -36,10 +36,18 @@ function Capture($w,[string]$name) {
     try { $g.CopyFromScreen([int]$r.X,[int]$r.Y,0,0,$bitmap.Size); $bitmap.Save((Join-Path $out "$name.png")) } finally { $g.Dispose(); $bitmap.Dispose() }
     return $text
 }
-function Next($w) {
+function Ready($w) {
     $condition=[Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::AutomationIdProperty,'1')
-    $button=$w.FindFirst([Windows.Automation.TreeScope]::Descendants,$condition)
-    if(-not $button -or -not $button.Current.IsEnabled) { throw 'Installer action unavailable.' }
+    $deadline=[DateTime]::UtcNow.AddSeconds(120)
+    do {
+        $button=$w.FindFirst([Windows.Automation.TreeScope]::Descendants,$condition)
+        if($button -and $button.Current.IsEnabled) { return $button }
+        Start-Sleep -Milliseconds 200
+    } while([DateTime]::UtcNow -lt $deadline)
+    throw 'Installer action unavailable.'
+}
+function Next($w) {
+    $button=Ready $w
     $button.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
 }
 function Wait-Text([string]$expected) {
@@ -62,12 +70,13 @@ $null=Capture $w 'finish'
 Next $w
 $uninstaller=Join-Path $env:ProgramFiles 'Moth Desktop/Uninstall.exe'
 Start-Process -FilePath $uninstaller -WindowStyle Normal | Out-Null
-$w=Wait-Text 'Будут удалены приложение и системная служба.'
+$w=Wait-Text 'Приложение и служба будут удалены.'
 $null=Capture $w 'uninstall-confirm'
 Next $w
 $deadline=[DateTime]::UtcNow.AddSeconds(120)
 do { Start-Sleep -Milliseconds 250; $w=Window; $text=Text $w } while((Get-Service MothDesktopService -ErrorAction SilentlyContinue) -and [DateTime]::UtcNow -lt $deadline)
 if(Get-Service MothDesktopService -ErrorAction SilentlyContinue) { throw 'Uninstall did not remove service.' }
+$null=Ready $w
 $null=Capture $w 'uninstall-finish'
 Next $w
 Write-Output 'Actual installer text and source license comparison passed; page screenshots captured.'
