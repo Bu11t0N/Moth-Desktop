@@ -1,7 +1,13 @@
 Moth Desktop 0.3.4
 
-Fixed corrupted Russian text in the Windows installer, including welcome, finish and uninstall pages. The license page now uses an explicitly encoded Unicode copy of the original license text.
+Provider subscriptions: multiple HTTP(S) sources, manual and scheduled refresh, quota/expiry information and VPN-only refresh through an owned tunnel. Device headers are opt-in per source and restricted to the original origin. The desktop installation ID can be displayed/copied for provider registration; phone IDs are not transferred. Paid account compatibility depends on the provider and supported profiles.
 
-Compatibility: IPC v2 and the existing Xray/sing-box engines are unchanged. Windows profiles remain protected by DPAPI; Linux profiles remain in Secret Service. Signed updates retain the existing production trust anchor.
+Library search, favorites, sorting and measured batch checks; supported JSON/Clash extraction and VMess AEAD, Shadowsocks AEAD/2022, SOCKS5 and HTTP(S) profiles alongside VLESS/Trojan. Unsupported or lossy options fail explicitly.
 
-Windows requires WebView2. No Authenticode signature, persistent kill switch or automatic reconnect after sleep/network changes. Linux support remains limited to the accepted Ubuntu 24.04 x64 configuration.
+DNS/bootstrap, MTU, IPv6 policy, ordered routing and executable-path application splitting. Optional recovery, HTTPS health checks and bounded failover. Encrypted portable backups and compatible Android v1 imports offer preview, explicit merge/replace and guarded session undo. System/light/dark themes and Russian/English UI.
+
+Fixed corrupted Russian text in Windows installer/uninstaller pages and the license display.
+
+Install the complete 0.3.4 package for new service features. IPC v2, pinned engines, DPAPI/Secret Service storage and production updater trust remain in use. Windows requires WebView2; Linux support is limited to the accepted Ubuntu 24.04 x64 configuration.
+
+This release does not provide full Android parity. Persistent kill switch, traffic/connections telemetry, general proxy/LAN sharing, OS login autostart and further protocol families remain unavailable. Recovery is opt-in; without a persistent kill switch ordinary networking can return after tunnel failure. No Windows Authenticode signature; updater packages use the existing production signature scheme.

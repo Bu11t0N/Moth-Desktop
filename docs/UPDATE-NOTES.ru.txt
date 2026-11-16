@@ -1,7 +1,7 @@
 Moth Desktop 0.3.4
 
-Fixed corrupted Russian text in the Windows installer, including welcome, finish and uninstall pages. The license page now uses an explicitly encoded Unicode copy of the original license text.
+Subscriptions by URL with per-source HWID/device consent, quota metadata, scheduled and VPN-only refresh. Added library search/favorites/sorting, supported JSON/Clash imports and additional typed profile families. Unsupported options fail explicitly; paid-provider compatibility is provider-specific.
 
-Compatibility: IPC v2 and the existing Xray/sing-box engines are unchanged. Windows profiles remain protected by DPAPI; Linux profiles remain in Secret Service. Signed updates retain the existing production trust anchor.
+Connection policies, executable-path splitting, optional recovery/health/failover, encrypted backups and compatible Android v1 migration with preview. Light/dark/system themes and Russian/English UI. Fixed Russian installer/uninstaller and license text.
 
-Windows requires WebView2. No Authenticode signature, persistent kill switch or automatic reconnect after sleep/network changes. Linux support remains limited to the accepted Ubuntu 24.04 x64 configuration.
+Install the complete package for new service features. Existing protected storage, pinned engines and production updater signatures are retained. No persistent kill switch or full Android parity; ordinary networking can return after failure. No general proxy/LAN, traffic telemetry or OS login autostart. Windows x64 requires WebView2; Linux support is limited to Ubuntu 24.04 x64.
