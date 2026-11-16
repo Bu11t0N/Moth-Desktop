@@ -1,3 +1,4 @@
+import { libraryHtml, bindLibrary } from "./library";
 import "./style.css";
 import { listen } from "@tauri-apps/api/event";
 import { updateMonitor, updateCard, bindUpdates, startUpdater } from "./updater";
@@ -38,6 +39,8 @@ let vpnMessage = native
   : "Открой настольное приложение";
 const probeResults = new Map<string, string>();
 let probingId: string | null = null;
+let bulkChecking=false;
+let bulkCancel=false;
 
 const icons = {
   home: '<path d="m3 11 9-8 9 8M5 10v10h5v-6h4v6h5V10"/>',
@@ -121,10 +124,7 @@ function render() {
       <div class="bottom-note">${icon("shield")}<p><strong>Хранение профилей</strong><span>Профили защищены хранилищем учётной записи. Без аналитики и облачной синхронизации.</span></p></div>
     `
         : page === "servers"
-          ? `
-      <div class="page-heading"><div><p class="eyebrow">ПРОФИЛИ</p><h1>Серверы</h1><p class="muted">VLESS и Trojan · ссылки и Base64-списки</p></div><button class="button" data-import>${icon("plus")} Добавить сервер</button></div>
-      ${state.profiles.length ? `<div class="server-list">${state.profiles.map((p) => `<article class="server-row ${p.id === state.selected ? "chosen" : ""}"><div class="server-symbol">${icon("servers")}</div><div class="server-info"><h3>${escapeHtml(p.name)}</h3><p>${escapeHtml(p.host)}:${p.port}</p><div class="tags"><span>${escapeHtml(p.protocol)}</span><span>${escapeHtml(p.transport)}</span><span>${escapeHtml(p.security)}</span></div></div><div class="server-actions"><button class="button subtle" data-probe="${p.id}" ${busy || probingId ? "disabled" : ""}>${probingId === p.id ? "Проверяем…" : "Проверить сервер"}</button><span class="probe-result" role="status">${escapeHtml(probeResults.get(p.id) || "")}</span><button class="button subtle" data-select="${p.id}" ${busy || active ? "disabled" : ""}>${p.id === state.selected ? "Выбран" : "Выбрать"}</button><button class="delete" data-delete="${p.id}" ${busy || active ? "disabled" : ""}>Удалить</button></div></article>`).join("")}</div>` : `<div class="empty-state"><div class="empty-art">${moth}</div><h2>Нет серверов</h2><p>Вставь ссылку VLESS или Trojan.<br>Секреты сохраняются только в настольном приложении.</p><button class="button" data-import>${icon("plus")} Добавить первый сервер</button></div>`}
-    `
+          ? libraryHtml(state, {busy, active, probingId, results:probeResults, icon:icon("servers")})
           : `<div class="page-heading"><div><p class="eyebrow">ПАРАМЕТРЫ</p><h1>Настройки</h1><p class="muted">Состояние этой сборки и доступные возможности</p></div></div>
       <article class="settings-card"><h2>Приложение</h2><div class="setting"><span>Версия</span><strong>${escapeHtml(state.version)} · Preview</strong></div><div class="setting"><span>Платформа</span><strong>${escapeHtml(state.capabilities.platform)}</strong></div><div class="setting"><span>Защищённое хранилище</span><strong>${state.capabilities.secureStorage ? (linux ? "Secret Service" : "Windows DPAPI") : "Недоступно в этом режиме"}</strong></div><div class="setting"><span>Системный VPN</span><strong>${state.capabilities.systemTunnel && serviceAvailable && serviceHealth?.protocol === 2 && serviceHealth.systemTunnel && serviceHealth.engines.length > 0 && serviceHealth.engines.every((e) => e.available) ? "Доступен через службу" : "Не подтверждён"}</strong></div><div class="setting"><span>Kill switch</span><strong>${state.capabilities.killSwitch ? "Доступен" : "Не реализован"}</strong></div></article>
       <article class="settings-card"><h2>Служба VPN</h2><p class="muted" role="status" aria-label="Состояние службы">${escapeHtml(serviceMessage)}</p>${serviceHealth ? `<div class="setting"><span>Протокол управления</span><strong>${serviceHealth.protocol === 2 ? "Совместим · IPC 2" : "Несовместим"}</strong></div>${serviceHealth.engines.map((e) => `<div class="setting"><span>Ядро службы: ${escapeHtml(e.name)}</span><strong>${escapeHtml(e.version)} · ${e.available ? "Проверено" : "Недоступно"}</strong></div>`).join("")}` : ""}<button class="button subtle service-refresh" ${serviceChecking ? "disabled" : ""}>${serviceChecking ? "Проверяем…" : "Проверить связь со службой"}</button><p class="muted">Для VPN нужна служба Moth с протоколом IPC 2 (0.3.1–0.3.4). ${installationHint}</p></article><article class="settings-card"><h2>Ядра приложения</h2>${(state.engines || []).map((e) => `<div class="setting"><span>${escapeHtml(e.name)} ${escapeHtml(e.version)}</span><strong>${e.available ? "Хэш проверен при запуске" : escapeHtml(e.message || "Недоступен")}</strong></div>`).join("")}<p class="muted">HTTPS-проверка проходит через выбранный сервер. Её результат — не ICMP ping и не признак включённого системного VPN.</p></article><article class="settings-card"><h2>Ограничения</h2><p class="muted">После смены сети подключись заново. Kill switch и автоматическое восстановление после сна ещё разрабатываются. При сбое ядра туннель отключается, система возвращается к обычной сети.</p></article>`
@@ -132,6 +132,17 @@ function render() {
     </section><footer><span>MOTH · OPEN SOURCE</span><button class="button subtle app-quit" ${native ? "" : "disabled"}>Выйти</button></footer></main></div>
     <dialog id="import-dialog"><form id="import-form"><div class="dialog-heading"><div><p class="eyebrow">ИМПОРТ</p><h2>Добавить серверы</h2></div><button type="button" class="close" aria-label="Закрыть">×</button></div><label for="server-links">Ссылки серверов</label><textarea id="server-links" required rows="6" autocomplete="off" spellcheck="false" placeholder="vless://… или trojan://…"></textarea><p class="dialog-help">По одной ссылке на строку или Base64-список. Загрузка HTTPS-подписок будет добавлена позже.</p><p id="import-error" class="dialog-error" role="alert"></p><div class="dialog-actions"><button type="button" class="button subtle close">Отмена</button><button class="button" type="submit">Импортировать</button></div></form></dialog>
     <dialog id="delete-dialog"><form method="dialog"><h2>Удалить сервер?</h2><p>Он исчезнет из локального списка.</p><div class="dialog-actions"><button class="button subtle" value="cancel">Отмена</button><button class="button" value="delete">Удалить</button></div></form></dialog>`;
+  bindLibrary(app,state,(next)=>{state=next;render();},render,(e)=>{error=message(e);render();});
+  const bulk=app.querySelector<HTMLButtonElement>("[data-probe-all]");
+  const cancelBulk=app.querySelector<HTMLButtonElement>("[data-probe-cancel]");
+  if(cancelBulk){cancelBulk.hidden=!bulkChecking;cancelBulk.onclick=()=>{bulkCancel=true;};}
+  if(bulk) bulk.onclick=async()=>{
+    if(bulkChecking||probingId)return;
+    const ids=Array.from(app.querySelectorAll<HTMLButtonElement>("[data-probe]")).map(b=>b.dataset.probe!);
+    bulkChecking=true;bulkCancel=false;
+    try{for(const id of ids){if(bulkCancel)break;probingId=id;render();try{const result=await probe(id);if(result.profileId===id)probeResults.set(id,`HTTPS · ${result.latencyMs} мс`);}catch(e){probeResults.set(id,message(e));}}}
+    finally{bulkChecking=false;probingId=null;render();}
+  };
   app.querySelector<HTMLAnchorElement>(".brand")!.onclick = (e) => {
     e.preventDefault();
     page = "home";
@@ -398,3 +409,5 @@ if (native) {
     render();
   }).catch(() => {});
 }
+
+if(native)void listen("moth-library-changed",async()=>{try{state=await call("get_snapshot");if(!app.querySelector("dialog[open]"))render();}catch(e){error=message(e);}});

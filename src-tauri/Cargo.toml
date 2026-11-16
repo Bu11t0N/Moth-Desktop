@@ -21,6 +21,8 @@ serde.workspace = true
 serde_json.workspace = true
 sha2 = "0.10"
 uuid.workspace = true
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-native-roots"] }
+url = "2"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Com", "Win32_System_Registry", "Win32_UI_Shell"] }

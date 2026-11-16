@@ -7,6 +7,7 @@ use tauri::Manager;
 use uuid::Uuid;
 #[cfg(all(any(windows, target_os = "linux"), debug_assertions))]
 mod native_acceptance;
+mod subscriptions;
 mod tray;
 mod updater;
 #[cfg(all(any(windows, target_os = "linux"), debug_assertions))]
@@ -18,12 +19,15 @@ struct AppState {
     engines: moth_engine::EngineSet,
     engine_status: Vec<moth_engine::EngineStatus>,
     probe_gate: tokio::sync::Mutex<()>,
+    subscription_gate: tokio::sync::Mutex<()>,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Snapshot {
     profiles: Vec<ProfileSummary>,
+    subscriptions: Vec<moth_core::SubscriptionSummary>,
+    favorites: Vec<Uuid>,
     selected: Option<Uuid>,
     capabilities: moth_platform::Capabilities,
     version: &'static str,
@@ -32,6 +36,8 @@ struct Snapshot {
 fn snapshot(library: &Library, engines: &[moth_engine::EngineStatus]) -> Snapshot {
     Snapshot {
         profiles: library.profiles.iter().map(|p| p.summary()).collect(),
+        subscriptions: library.subscriptions.iter().map(|s| s.summary()).collect(),
+        favorites: library.favorites.clone(),
         selected: library.selected,
         capabilities: moth_platform::capabilities(),
         version: env!("CARGO_PKG_VERSION"),
@@ -275,12 +281,19 @@ fn main() {
                 engines,
                 engine_status,
                 probe_gate: tokio::sync::Mutex::new(()),
+                subscription_gate: tokio::sync::Mutex::new(()),
             });
             tray::setup(app)?;
+            subscriptions::schedule(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             get_snapshot,
+            subscriptions::save_subscription,
+            subscriptions::delete_subscription,
+            subscriptions::refresh_subscription,
+            subscriptions::get_device_id,
+            subscriptions::toggle_favorite,
             import_servers,
             select_server,
             remove_server,

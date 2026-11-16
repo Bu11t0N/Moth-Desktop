@@ -10,6 +10,8 @@ export type Profile = {
   security: string;
 };
 export type Snapshot = {
+  subscriptions?: Subscription[];
+  favorites?: string[];
   profiles: Profile[];
   selected: string | null;
   version: string;
@@ -26,6 +28,16 @@ export type Snapshot = {
     killSwitch: boolean;
   };
 };
+export type Subscription = {
+  id: string; name: string; profiles: string[]; sendHwid: boolean; sendDeviceInfo: boolean;
+  userAgent: string; refreshHours: number; vpnOnly: boolean; allowHttp: boolean;
+  lastAttempt: number | null; lastSuccess: number | null; lastError: string | null;
+  quota: {usedBytes: number | null; totalBytes: number | null; expires: number | null};
+};
+export async function deviceId(): Promise<string> {
+  if (!native) throw new Error("HWID доступен в настольном приложении.");
+  return invoke<string>("get_device_id");
+}
 export const native = isTauri();
 export const empty: Snapshot = {
   profiles: [],

@@ -327,12 +327,16 @@ impl NetworkLease {
 }
 
 pub struct Tunnel {
+    subscription_proxy: moth_ipc::DownloadProxy,
     tun: EngineProcess,
     upstream: EngineProcess,
     _lease: NetworkLease,
     _maintenance: moth_ipc::maintenance::TunnelLease,
 }
 impl Tunnel {
+    pub fn subscription_proxy(&self) -> moth_ipc::DownloadProxy {
+        self.subscription_proxy.clone()
+    }
     pub fn alive(&mut self) -> bool {
         matches!(self.tun.child.try_wait(), Ok(None))
             && matches!(self.upstream.child.try_wait(), Ok(None))
@@ -388,6 +392,16 @@ impl EngineSet {
                 .port(),
             credential: Uuid::new_v4(),
         };
+        let proxy_reservation =
+            std::net::TcpListener::bind("127.0.0.1:0").map_err(|_| EngineError::Process)?;
+        let subscription_proxy = moth_ipc::DownloadProxy {
+            port: proxy_reservation
+                .local_addr()
+                .map_err(|_| EngineError::Process)?
+                .port(),
+            username: Uuid::new_v4().to_string(),
+            password: Uuid::new_v4().to_string(),
+        };
         let mut config = moth_core::xray_bridge_config(profile, &bridge);
         let outbound = &mut config["outbounds"][0];
         let key = if profile.protocol == moth_core::Protocol::Vless {
@@ -403,6 +417,7 @@ impl EngineSet {
         tun_config["inbounds"][0]["auto_route"] = serde_json::json!(false);
         tun_config["inbounds"][0]["strict_route"] = serde_json::json!(false);
         tun_config["inbounds"][0]["iproute2_table_index"] = serde_json::json!(20220);
+        tun_config["inbounds"].as_array_mut().ok_or(EngineError::Process)?.push(serde_json::json!({"type":"mixed","tag":"subscription-in","listen":"127.0.0.1","listen_port":subscription_proxy.port,"users":[{"username":subscription_proxy.username,"password":subscription_proxy.password}]}));
         self.validate(Engine::Xray, &config).await?;
         self.validate(Engine::SingBox, &tun_config).await?;
         let lease = NetworkLease::acquire()?;
@@ -429,10 +444,12 @@ impl EngineSet {
             }
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
+        drop(proxy_reservation);
         let tun = self
             .spawn_config(Engine::SingBox, &tun_config, false)
             .await?;
         let mut session = Tunnel {
+            subscription_proxy,
             tun,
             upstream,
             _lease: lease,

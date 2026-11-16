@@ -774,3 +774,17 @@ textarea::placeholder {
 .update-notes { white-space: pre-wrap; overflow-wrap: anywhere; }
 .update-card progress { width: 100%; }
 .update-card .button { margin: 6px 8px 0 0; }
+
+.library-buttons,.library-toolbar {display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.library-toolbar {margin:24px 0}
+.library-toolbar label {display:flex;gap:8px;align-items:center}
+.library-toolbar input[type=search] {min-width:220px}
+.library-toolbar input,.library-toolbar select,#source-dialog input:not([type=checkbox]),#source-dialog select,#device-id {padding:10px;border:1px solid var(--border,#5b6068);border-radius:8px;background:var(--surface,#181c23);color:inherit;font:inherit}
+.subscription-list {display:grid;gap:14px}
+.server-group {margin:24px 0}
+#source-dialog {max-width:620px}
+#source-form {display:grid;gap:12px}
+#source-form label {display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+#source-form input:not([type=checkbox]),#source-form select {width:100%}
+#hwid-dialog {max-width:600px}
+#device-id {width:100%;box-sizing:border-box}

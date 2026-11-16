@@ -62,7 +62,7 @@ impl ProfileStore {
         }
         let plain = Zeroizing::new(unseal(&encrypted)?);
         let e: Envelope = serde_json::from_slice(&plain).map_err(|_| StoreError::Invalid)?;
-        if e.version != 1 || e.library.validate().is_err() {
+        if !matches!(e.version, 1 | 2) || e.library.validate().is_err() {
             return Err(StoreError::Invalid);
         }
         Ok(e.library)
@@ -72,7 +72,7 @@ impl ProfileStore {
         library.validate().map_err(|_| StoreError::Invalid)?;
         let plain = Zeroizing::new(
             serde_json::to_vec(&Envelope {
-                version: 1,
+                version: 2,
                 library: library.clone(),
             })
             .map_err(|_| StoreError::Invalid)?,

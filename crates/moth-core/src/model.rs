@@ -113,11 +113,29 @@ impl Profile {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize, Default)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Library {
     pub profiles: Vec<Profile>,
     pub selected: Option<Uuid>,
+    #[serde(default)]
+    pub subscriptions: Vec<crate::Subscription>,
+    #[serde(default)]
+    pub favorites: Vec<Uuid>,
+    #[serde(default = "Uuid::new_v4")]
+    pub device_id: Uuid,
+}
+
+impl Default for Library {
+    fn default() -> Self {
+        Self {
+            profiles: Vec::new(),
+            selected: None,
+            subscriptions: Vec::new(),
+            favorites: Vec::new(),
+            device_id: Uuid::new_v4(),
+        }
+    }
 }
 
 impl Library {
@@ -143,12 +161,39 @@ impl Library {
     pub fn remove(&mut self, id: Uuid) -> bool {
         let before = self.profiles.len();
         self.profiles.retain(|p| p.id != id);
+        self.favorites.retain(|p| *p != id);
+        for source in &mut self.subscriptions {
+            source.profiles.retain(|p| *p != id);
+        }
         if self.selected == Some(id) {
             self.selected = self.profiles.first().map(|p| p.id);
         }
         before != self.profiles.len()
     }
     pub fn validate(&self) -> Result<(), &'static str> {
+        if self.device_id.is_nil() || self.subscriptions.len() > 100 {
+            return Err("Некорректное хранилище подписок");
+        }
+        let mut sources = std::collections::HashSet::new();
+        let mut members = std::collections::HashSet::new();
+        for source in &self.subscriptions {
+            source.validate()?;
+            if !sources.insert(source.id)
+                || source
+                    .profiles
+                    .iter()
+                    .any(|id| !members.insert(*id) || !self.profiles.iter().any(|p| p.id == *id))
+            {
+                return Err("Некорректный состав подписки");
+            }
+        }
+        if self
+            .favorites
+            .iter()
+            .any(|id| !self.profiles.iter().any(|p| p.id == *id))
+        {
+            return Err("Избранный сервер отсутствует");
+        }
         if self.profiles.len() > 1000 {
             return Err("Слишком много серверов");
         }

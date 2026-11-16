@@ -34,6 +34,12 @@ pub async fn dispatch(
                 })
             }
             Command::TunnelStatus {} => tunnel.status(caller).await,
+            Command::SubscriptionProxy {} if !development => {
+                tunnel.subscription_proxy(caller).await
+            }
+            Command::SubscriptionProxy {} => Reply::Failure {
+                code: ErrorCode::Unsupported,
+            },
             Command::Disconnect {} if !development => tunnel.disconnect(caller).await,
             Command::Connect { link } if !development => match moth_core::import_links(link) {
                 Ok(mut profiles) if profiles.len() == 1 => {

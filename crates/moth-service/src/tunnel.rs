@@ -16,6 +16,28 @@ pub struct Controller {
     operation: Mutex<()>,
 }
 impl Controller {
+    pub async fn subscription_proxy(&self, caller: &str) -> Reply {
+        let mut state = self.inner.lock().await;
+        if state.owner.as_deref() != Some(caller) || state.phase != TunnelPhase::Connected {
+            return Reply::Failure {
+                code: ErrorCode::NotOwner,
+            };
+        }
+        match state.session.as_mut() {
+            Some(session) => {
+                if session.alive() {
+                    Reply::SubscriptionProxy(session.subscription_proxy())
+                } else {
+                    Reply::Failure {
+                        code: ErrorCode::TunnelFailed,
+                    }
+                }
+            }
+            _ => Reply::Failure {
+                code: ErrorCode::TunnelFailed,
+            },
+        }
+    }
     pub async fn status(&self, caller: &str) -> Reply {
         let state = self.inner.lock().await;
         Reply::Tunnel(TunnelState {

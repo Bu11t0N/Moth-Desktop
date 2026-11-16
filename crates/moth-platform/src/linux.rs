@@ -35,7 +35,7 @@ pub(super) fn load() -> Result<Library, StoreError> {
         return Err(StoreError::Invalid);
     }
     let envelope: Envelope = serde_json::from_slice(&plain).map_err(|_| StoreError::Invalid)?;
-    if envelope.version != 1 || envelope.library.validate().is_err() {
+    if !matches!(envelope.version, 1 | 2) || envelope.library.validate().is_err() {
         return Err(StoreError::Invalid);
     }
     Ok(envelope.library)
@@ -45,7 +45,7 @@ pub(super) fn save(library: &Library) -> Result<(), StoreError> {
     library.validate().map_err(|_| StoreError::Invalid)?;
     let plain = Zeroizing::new(
         serde_json::to_vec(&Envelope {
-            version: 1,
+            version: 2,
             library: library.clone(),
         })
         .map_err(|_| StoreError::Invalid)?,

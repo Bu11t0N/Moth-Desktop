@@ -35,6 +35,7 @@ pub enum Command {
     Connect { link: String },
     Disconnect {},
     TunnelStatus {},
+    SubscriptionProxy {},
 }
 impl Drop for Command {
     fn drop(&mut self) {
@@ -67,7 +68,30 @@ pub enum Reply {
     Status(Health),
     Probe { latency_ms: u64 },
     Tunnel(TunnelState),
+    SubscriptionProxy(DownloadProxy),
     Failure { code: ErrorCode },
+}
+
+/// Ephemeral owner-only native-backend credentials. Never serialize to webview
+/// snapshots or include secrets in Debug output.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DownloadProxy {
+    pub port: u16,
+    pub username: String,
+    pub password: String,
+}
+impl std::fmt::Debug for DownloadProxy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("DownloadProxy([redacted])")
+    }
+}
+impl Drop for DownloadProxy {
+    fn drop(&mut self) {
+        use zeroize::Zeroize;
+        self.username.zeroize();
+        self.password.zeroize();
+    }
 }
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]

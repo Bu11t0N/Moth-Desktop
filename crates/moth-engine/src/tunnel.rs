@@ -9,11 +9,15 @@ use windows_sys::Win32::{
 /// Owns both engines and their Windows jobs. Dropping it tears down the private
 /// Wintun adapter/routes and the dynamic WFP session, including on cancellation.
 pub struct Tunnel {
+    subscription_proxy: moth_ipc::DownloadProxy,
     tun: EngineProcess,
     upstream: EngineProcess,
     _maintenance: Option<moth_ipc::maintenance::TunnelLease>,
 }
 impl Tunnel {
+    pub fn subscription_proxy(&self) -> moth_ipc::DownloadProxy {
+        self.subscription_proxy.clone()
+    }
     pub fn alive(&mut self) -> bool {
         matches!(self.tun.child.try_wait(), Ok(None))
             && matches!(self.upstream.child.try_wait(), Ok(None))
@@ -100,6 +104,16 @@ impl EngineSet {
                 .port(),
             credential: Uuid::new_v4(),
         };
+        let proxy_reservation =
+            std::net::TcpListener::bind("127.0.0.1:0").map_err(|_| EngineError::Process)?;
+        let subscription_proxy = moth_ipc::DownloadProxy {
+            port: proxy_reservation
+                .local_addr()
+                .map_err(|_| EngineError::Process)?
+                .port(),
+            username: Uuid::new_v4().to_string(),
+            password: Uuid::new_v4().to_string(),
+        };
         let mut config = moth_core::xray_bridge_config(profile, &bridge);
         let outbound = &mut config["outbounds"][0];
         let key = if profile.protocol == moth_core::Protocol::Vless {
@@ -109,8 +123,9 @@ impl EngineSet {
         };
         outbound["settings"][key][0]["address"] = serde_json::json!(address.ip().to_string());
         outbound["streamSettings"]["sockopt"] = serde_json::json!({"interface":interface});
+        let mut tun_config = moth_core::sing_box_tun_config(&bridge);
+        tun_config["inbounds"].as_array_mut().ok_or(EngineError::Process)?.push(serde_json::json!({"type":"mixed","tag":"subscription-in","listen":"127.0.0.1","listen_port":subscription_proxy.port,"users":[{"username":subscription_proxy.username,"password":subscription_proxy.password}]}));
         self.validate(Engine::Xray, &config).await?;
-        let tun_config = moth_core::sing_box_tun_config(&bridge);
         self.validate(Engine::SingBox, &tun_config).await?;
         drop(reservation);
         let mut upstream = self.spawn_config(Engine::Xray, &config, false).await?;
@@ -140,10 +155,12 @@ impl EngineSet {
             fixture_bridge(&bridge, Ipv4Addr::new(198, 18, 0, 123), 18080).await;
             eprintln!("Bound Xray bridge passed before TUN activation");
         }
+        drop(proxy_reservation);
         let tun = self
             .spawn_config(Engine::SingBox, &tun_config, false)
             .await?;
         let mut session = Tunnel {
+            subscription_proxy,
             tun,
             upstream,
             _maintenance: None,
