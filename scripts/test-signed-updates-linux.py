@@ -37,7 +37,7 @@ def main():
         with certificate.open('xb') as target: target.write((fixture/'ca.crt').read_bytes())
         certificate.chmod(0o644)
         run('update-ca-certificates')
-        run('apt-get','install','--yes','--no-install-recommends',str(fixture/'baseline/Moth-0.3.2-linux-x64.deb'))
+        run('apt-get','install','--yes','--no-install-recommends',str(fixture/'baseline/Moth-0.3.3-linux-x64.deb'))
         installed=True
         with socket.socket() as listener:
             listener.bind(('127.0.0.1',0));port=listener.getsockname()[1]
@@ -110,7 +110,7 @@ def main():
                     if not (job/'installing.event').exists(): raise RuntimeError('Actual package installation was not reached')
                     if case=='rollback' and (not (job/'rollingBack.event').exists() or not Path('/run/moth-update-acceptance-poststart').exists()):
                         raise RuntimeError('Rollback did not reach the forced post-start failure')
-                expected='0.3.3' if case=='success' else '0.3.2'
+                expected='0.3.4' if case=='success' else '0.3.3'
                 health=json.loads(run('/usr/lib/moth-desktop/moth-service','--status').stdout)
                 if health['version']!=expected or not all(engine['available'] for engine in health['engines']):
                     raise RuntimeError('Installed coordinated component versions are not healthy')
