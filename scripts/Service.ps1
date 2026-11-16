@@ -17,7 +17,7 @@ $env:ComSpec = [IO.Path]::Combine($env:SystemRoot,'System32\cmd.exe')
 if ([IntPtr]::Size -ne 8) { throw '64-bit PowerShell is required for Moth Desktop maintenance.' }
 $serviceName = 'MothDesktopService'
 $installRoot = Join-Path $env:ProgramFiles 'Moth Desktop'
-$expectedVersion = '0.3.3'
+$expectedVersion = '0.3.4'
 trap {
     # The graphical installer uses a protected temporary payload directory.
     # Keep a bounded, credential-free reason there when its silent run fails.

@@ -1,61 +1,7 @@
-Moth Desktop 0.3.3 — сборка для разработки
-Windows x64 и Ubuntu 24.04 x64
+Moth Desktop 0.3.4
 
-Windows
-Запусти Moth-0.3.3-windows-x64-setup.exe и подтверди запрос Windows.
-Установщик добавит приложение, системную службу, готовые Xray/sing-box,
-ярлыки и запись для удаления. Открой Moth Desktop через ярлык обычным
-пользователем. Для GUI нужен Microsoft WebView2 Runtime:
-https://developer.microsoft.com/microsoft-edge/webview2/
+Fixed corrupted Russian text in the Windows installer, including welcome, finish and uninstall pages. The license page now uses an explicitly encoded Unicode copy of the original license text.
 
-Перед переходом с 0.3.1/0.3.2 отключи VPN и закрой старое приложение через
-«Выход». Можно установить новый пакет поверх прежней службы. Профили DPAPI
-останутся в той же учётной записи Windows; установщик их не расшифровывает.
-ZIP также доступен: распакуй его полностью, сохрани engines/notices и запусти
-Install-Service.cmd. Обновление из приложения требует полной установки GUI
-через графический установщик; один служебный bootstrap её не заменяет.
+Compatibility: IPC v2 and the existing Xray/sing-box engines are unchanged. Windows profiles remain protected by DPAPI; Linux profiles remain in Secret Service. Signed updates retain the existing production trust anchor.
 
-Ubuntu 24.04
-Нужны systemd, работающий systemd-resolved со stub-resolv.conf и настольный
-Secret Service с разблокированным постоянным keyring, защищённым паролем.
-Установи пакет: sudo apt install ./Moth-0.3.3-linux-x64.deb
-Открой Moth Desktop из меню приложений без sudo. Установка запускает службу,
-но сама не подключает VPN. Другие дистрибутивы пока не прошли приёмку.
-
-Подключение и окно
-Добавь свою ссылку VLESS/Trojan, выбери сервер и нажми «Подключить».
-Надпись «Подключено» требует HTTPS-проверки через реальный системный туннель.
-Крестик сохраняет VPN и убирает окно в трей. Если Linux-трей недоступен,
-окно остаётся свёрнутым на панели задач. «Выход» подтверждает отключение
-своего VPN перед завершением. При недоступной службе GUI показывает ошибку.
-В настройках доступны версии GUI, службы и ядер, а также совместимость IPC.
-
-Подписанные обновления
-В настройках можно проверить и скачать более новую подписанную версию.
-Перед установкой приложение отключит свой VPN и запросит UAC/polkit.
-GUI закроется; отдельное окно покажет установку или откат и откроет приложение
-от прежнего обычного пользователя. Обновляются GUI, служба и ядра вместе.
-Изменённые, неподписанные, старые или несовместимые пакеты отклоняются.
-При ошибке запуска восстанавливается предыдущая установка; профили сохраняются.
-Если восстановление не подтверждено, автоматического перезапуска не будет.
-Для 0.3.1/0.3.2 нужен ручной переход через установщик: в тех выпусках updater нет.
-
-Удаление
-Windows: запись Moth Desktop в установленных приложениях.
-Ubuntu: sudo apt remove moth-desktop
-Профили DPAPI/Secret Service и резервные копии обновлений сохраняются.
-В Windows также сохраняются изменённые и неизвестные файлы. Не нужно
-вручную удалять Program Files или keyring.
-
-Ограничения
-Подпись updater не является Windows Authenticode: сертификата издателя Windows
-у приложения нет. Устанавливай пакеты только из официального репозитория.
-Kill switch и автоматическое переподключение после сна/смены сети отсутствуют.
-При сбое ядра или службы возвращается обычная сеть. Полная защита от утечек
-DNS/IPv6 не заявлена: LAN, более специфичные маршруты и привязка приложения
-к адаптеру могут обходить туннель. Не используй одновременно с другим VPN.
-Восстановление после отключения питания во время установки не подтверждено.
-
-Исходники, результаты приёмки и лицензии
-https://github.com/Bu11t0N/Moth-Desktop
-GPL-3.0-or-later. Точные версии, исходники и лицензии готовых ядер — в notices.
+Windows requires WebView2. No Authenticode signature, persistent kill switch or automatic reconnect after sleep/network changes. Linux support remains limited to the accepted Ubuntu 24.04 x64 configuration.

@@ -109,8 +109,8 @@ def main():
     try:
         for version,variant in [('0.3.2','baseline'),('0.3.3','candidate')]:
             for name,original in configurations.items():
-                (source/name).write_text(original.replace('0.3.3',version),encoding='utf-8')
-            lock=re.sub(r'(\[\[package\]\]\nname = "moth-[^"]+"\nversion = ")0\.3\.3(")',lambda match:match[1]+version+match[2],original_lock)
+                (source/name).write_text(original.replace('0.3.4',version),encoding='utf-8')
+            lock=re.sub(r'(\[\[package\]\]\nname = "moth-[^"]+"\nversion = ")0\.3\.4(")',lambda match:match[1]+version+match[2],original_lock)
             (source/'Cargo.lock').write_text(lock)
             run('cargo','build','-p','moth-service','-p','moth-maintenance','--locked',cwd=source)
             arguments=['desktop:build','--','--debug']+(['--no-bundle'] if windows else ['--bundles','deb'])

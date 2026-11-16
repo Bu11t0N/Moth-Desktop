@@ -1,5 +1,12 @@
 # Status — 2026-11-15
 
+## 0.3.4 candidate
+
+- Windows installer source is explicitly read as UTF-8. The license page uses a BOM-marked UTF-16LE build copy with CRLF, preserving the source text.
+- Added actual installer/uninstaller page text checks and screenshot artifacts under English and Russian user cultures. These checks do not change the installer language or system codepage.
+- Added the published 0.3.3 Windows package to installer upgrade/data-retention acceptance.
+- Native acceptance and publication of this candidate are pending. VPN behavior, IPC v2, engine pins and updater trust anchor are unchanged.
+
 Version 0.3.3 is [published](https://github.com/Bu11t0N/Moth-Desktop/releases/tag/v0.3.3) for Windows x64 and the supported Ubuntu 24.04 x64 configuration. It uses unmodified pinned Xray/sing-box engines. The limitations below remain applicable.
 
 ## Implemented

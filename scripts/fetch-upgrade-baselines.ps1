@@ -2,6 +2,7 @@
 param([string]$OutputDirectory=(Join-Path (Split-Path $PSScriptRoot) 'target/upgrade-baselines'))
 $ErrorActionPreference='Stop'
 $pins=@{
+    '0.3.3'='cb455b49a9c567a3292f38f2297c6fd85b85f0f64c66d528a148372aee0418f4'
     '0.3.1'='3c9155623b46ab42533eb8d2fe070986bb1d0cdbc185f162c12d207639460816'
     '0.3.2'='84b67ac6d5776cf81c097317874f67d497d09e2e263b99673482f9caaf12ad69'
 }

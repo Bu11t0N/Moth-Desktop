@@ -28,7 +28,10 @@ ShowUninstDetails show
 !define MUI_WELCOMEPAGE_TEXT "Установка приложения, системной службы и проверенных ядер VPN.$\r$\n$\r$\nПеред обновлением отключите VPN и выберите «Выход» в меню трея. Профили сохранятся в учётной записи Windows.$\r$\n$\r$\nСборка для разработки без Authenticode-подписи."
 !define MUI_FINISHPAGE_TEXT "Приложение установлено. Откройте Moth Desktop через ярлык в меню «Пуск».$\r$\n$\r$\nДля обычной работы права администратора не нужны."
 !insertmacro MUI_PAGE_WELCOME
-!insertmacro MUI_PAGE_LICENSE "..\..\LICENSE"
+!ifndef LICENSE_FILE
+  !error "LICENSE_FILE is required (BOM-marked Unicode license)"
+!endif
+!insertmacro MUI_PAGE_LICENSE "${LICENSE_FILE}"
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
 !define MUI_UNCONFIRMPAGE_TEXT_TOP "Будут удалены приложение и системная служба.$\r$\n$\r$\nПрофили и настройки пользователей сохранятся. Изменённые файлы и резервные копии прежних установок также останутся. Перед удалением выберите «Выход» в меню трея."

@@ -9,7 +9,7 @@ test("updater renders signed metadata as text and offers no installation after s
       if(command==="check_updates")return {phase:"available",update:{version:"0.3.4",notes:"<img src=x onerror=alert(1)>",file:"fixture",size:64},downloaded:0,total:64,error:null};
       if(command==="download_update")throw "Подпись обновления не прошла проверку";
       if(command==="tunnel_status")return {phase:"disconnected",ownedByCaller:false,error:null};
-      return {profiles:[],selected:null,version:"0.3.3",engines:[],capabilities:{platform:"windows",secureStorage:true,systemTunnel:true,killSwitch:false}};
+      return {profiles:[],selected:null,version:"0.3.4",engines:[],capabilities:{platform:"windows",secureStorage:true,systemTunnel:true,killSwitch:false}};
     }};
   });
   await page.goto("/");
@@ -80,7 +80,7 @@ test("native adapter renders untrusted summaries as text and manages selected se
         return {
           profiles,
           selected: profiles.length ? "test-id" : null,
-          version: "0.3.3",
+          version: "0.3.4",
           capabilities: {
             platform: "windows",
             secureStorage: true,
@@ -166,7 +166,7 @@ test("server probe reports measured result without enabling system VPN", async (
             },
           ],
           selected: "probe-id",
-          version: "0.3.3",
+          version: "0.3.4",
           engines: [
             {
               name: "xray",
@@ -210,7 +210,7 @@ test("authenticated service health is separate from VPN protection", async ({
       invoke: async (cmd: string) => {
         if (cmd === "service_status")
           return {
-            version: "0.3.3",
+            version: "0.3.4",
             protocol: 2,
             systemTunnel: false,
             engines: [{ name: "xray", version: "26.10.21", available: false }],
@@ -218,7 +218,7 @@ test("authenticated service health is separate from VPN protection", async ({
         return {
           profiles: [],
           selected: null,
-          version: "0.3.3",
+          version: "0.3.4",
           engines: [],
           capabilities: {
             platform: "windows",
@@ -236,7 +236,7 @@ test("authenticated service health is separate from VPN protection", async ({
     .getByRole("button", { name: "Проверить связь со службой", exact: true })
     .click();
   await expect(page.getByRole("status", { name: "Состояние службы" })).toContainText(
-    "Связь установлена · 0.3.3",
+    "Связь установлена · 0.3.4",
   );
   await expect(page.getByText("Совместим · IPC 2")).toBeVisible();
   await expect(page.getByText("26.10.21 · Недоступно")).toBeVisible();
@@ -294,7 +294,7 @@ test("VPN follows service transitions and loses connected state when service dis
             },
           ],
           selected: "vpn",
-          version: "0.3.3",
+          version: "0.3.4",
           engines: [],
           capabilities: {
             platform: "windows",
@@ -374,7 +374,7 @@ test("owner can cancel a connecting operation without a stale connected state", 
             },
           ],
           selected: "vpn",
-          version: "0.3.3",
+          version: "0.3.4",
           engines: [],
           capabilities: {
             platform: "windows",
@@ -426,7 +426,7 @@ test("diagnostics support IPC 2 service 0.3.1 and clear stale health after failu
         return {
           profiles: [],
           selected: null,
-          version: "0.3.3",
+          version: "0.3.4",
           engines: [],
           capabilities: {
             platform: "windows",
@@ -510,7 +510,7 @@ for (const delayedHealth of [false, true]) {
           return {
             profiles: [],
             selected: null,
-            version: "0.3.3",
+            version: "0.3.4",
             engines: [],
             capabilities: {
               platform: "windows",

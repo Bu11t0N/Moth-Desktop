@@ -2261,7 +2261,7 @@ dependencies = [
 
 [[package]]
 name = "moth-core"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "base64 0.22.1",
  "percent-encoding",
@@ -2274,7 +2274,7 @@ dependencies = [
 
 [[package]]
 name = "moth-desktop"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "libc",
  "moth-core",
@@ -2296,7 +2296,7 @@ dependencies = [
 
 [[package]]
 name = "moth-engine"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "libc",
  "moth-core",
@@ -2315,7 +2315,7 @@ dependencies = [
 
 [[package]]
 name = "moth-ipc"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "libc",
  "serde",
@@ -2329,7 +2329,7 @@ dependencies = [
 
 [[package]]
 name = "moth-maintenance"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "libc",
  "moth-ipc",
@@ -2341,7 +2341,7 @@ dependencies = [
 
 [[package]]
 name = "moth-platform"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "moth-core",
  "secret-service",
@@ -2355,7 +2355,7 @@ dependencies = [
 
 [[package]]
 name = "moth-service"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "libc",
  "moth-core",
@@ -2369,7 +2369,7 @@ dependencies = [
 
 [[package]]
 name = "moth-update"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "base64 0.22.1",
  "minisign-verify",

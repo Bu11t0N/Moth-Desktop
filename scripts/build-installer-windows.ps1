@@ -29,7 +29,18 @@ $entries=@(Get-ChildItem -LiteralPath $payload -File -Recurse | Sort-Object Full
     @{path=$_.FullName.Substring($payload.Length+1).Replace('\','/');sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}
 })
 @{version=$version;files=$entries} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $payload 'desktop-package.json') -Encoding utf8NoBOM
-& $MakeNsis /NOCONFIG /V2 "/DVERSION=$version" "/DPAYLOAD=$payload" "/DOUTPUT=$installer" (Join-Path $PSScriptRoot 'installer/windows.nsi')
+# Script input and license data have separate decoding paths in NSIS.
+# Reject invalid UTF-8 instead of silently replacing characters. LicenseData
+# detects its own BOM; /INPUTCHARSET alone does not fix a BOM-less license.
+$utf8 = [Text.UTF8Encoding]::new($false, $true)
+$scriptPath = Join-Path $PSScriptRoot 'installer/windows.nsi'
+$null = $utf8.GetString([IO.File]::ReadAllBytes($scriptPath))
+$licenseText = $utf8.GetString([IO.File]::ReadAllBytes((Join-Path $repo 'LICENSE'))).TrimStart([char]0xFEFF)
+$licenseText = $licenseText.Replace("`r`n", "`n").Replace("`r", "`n").Replace("`n", "`r`n")
+$licensePath = Join-Path $output 'installer-license.txt'
+[IO.File]::WriteAllText($licensePath, $licenseText, [Text.UnicodeEncoding]::new($false, $true, $true))
+if ([IO.File]::ReadAllText($licensePath, [Text.Encoding]::Unicode) -cne $licenseText) { throw 'Installer license encoding roundtrip failed.' }
+& $MakeNsis /NOCONFIG /INPUTCHARSET UTF8 /V2 "/DVERSION=$version" "/DPAYLOAD=$payload" "/DOUTPUT=$installer" "/DLICENSE_FILE=$licensePath" $scriptPath
 if ($LASTEXITCODE -ne 0) { throw 'NSIS build failed.' }
 "$((Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($installer))" | Set-Content -LiteralPath ($installer+'.sha256') -Encoding utf8NoBOM
 Write-Output "Installer: $installer"

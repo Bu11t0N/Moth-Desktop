@@ -87,7 +87,23 @@ jobs:
         run: |
           $baselines=Join-Path $env:RUNNER_TEMP ('moth-nsis-baselines-'+[Guid]::NewGuid().ToString('N'))
           ./scripts/fetch-upgrade-baselines.ps1 -OutputDirectory $baselines
-          ./scripts/test-installer-windows.ps1 -Installer target/installers/Moth-${{ needs.windows.outputs.version }}-windows-x64-setup.exe -PackageDirectory target/installer-package -Baseline031Directory (Join-Path $baselines 'Moth-0.3.1-windows-x64') -Baseline032Directory (Join-Path $baselines 'Moth-0.3.2-windows-x64')
+          ./scripts/test-installer-windows.ps1 -Installer target/installers/Moth-${{ needs.windows.outputs.version }}-windows-x64-setup.exe -PackageDirectory target/installer-package -Baseline031Directory (Join-Path $baselines 'Moth-0.3.1-windows-x64') -Baseline032Directory (Join-Path $baselines 'Moth-0.3.2-windows-x64') -Baseline033Directory (Join-Path $baselines 'Moth-0.3.3-windows-x64')
+      - name: Read and capture actual installer and uninstaller pages
+        shell: pwsh
+        run: |
+          $originalCulture=Get-Culture
+          try {
+            foreach ($culture in @('en-US','ru-RU')) {
+              Set-Culture $culture
+              & pwsh -NoProfile -File scripts/test-installer-text.ps1 -Installer target/installers/Moth-${{ needs.windows.outputs.version }}-windows-x64-setup.exe -OutputDirectory "target/installer-pages/$culture"
+              if ($LASTEXITCODE -ne 0) { throw 'Installer text acceptance failed.' }
+            }
+          } finally { Set-Culture $originalCulture.Name }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: installer-pages
+          path: target/installer-pages/**
       - uses: actions/upload-artifact@v4
         with:
           name: Moth-${{ needs.windows.outputs.version }}-windows-x64-installer
