@@ -2,6 +2,19 @@ import type { ConnectionSettings } from "./api";
 let language: "ru" | "en" = "ru";
 export const currentLanguage = () => language;
 const en: Record<string, string> = {
+  "Диагностика": "Diagnostics",
+  "ДИАГНОСТИКА": "DIAGNOSTICS",
+  "О приложении": "About",
+  "О ПРИЛОЖЕНИИ": "ABOUT",
+  "Соединение, защита и поведение приложения": "Connection, protection and application behavior",
+  "Статистика": "Traffic",
+  "СТАТИСТИКА": "TRAFFIC",
+  "Для VPN нужна служба Moth с протоколом IPC 2 (0.3.1–0.3.5).": "VPN requires the Moth IPC 2 service (0.3.1–0.3.5); new features require 0.3.5.",
+  "Автовосстановление включается отдельно в настройках.": "Automatic recovery is enabled separately in settings.",
+  "Туннель проверен · kill switch включён": "Tunnel verified · kill switch is on",
+  "Туннель проверен · kill switch не подтверждён": "Tunnel verified · kill switch is unverified",
+  "Выйти, сохранить блокировку": "Exit and keep network blocked",
+  "Kill switch включается отдельно; при включении Disconnect и Exit сохраняют блокировку.": "Kill switch is enabled separately; when enabled, Disconnect and Exit retain the network block.",
   "Резервные копии и перенос Android": "Backups and Android migration",
   "Копия содержит ссылки и пароли серверов. Экспорт защищён отдельным паролем. HWID этого компьютера не переносится. Восстановление не меняет активное подключение; подключитесь заново для применения настроек.":
     "The backup contains server URLs and passwords. Export uses a separate password. This computer's HWID is not transferred. Restore does not change the active connection; reconnect to apply settings.",

@@ -18,6 +18,12 @@ fn main() {
             Ok(())
         }
         Some("--prepare-install") => moth_ipc::maintenance::initialize().map_err(|e| e.to_string()),
+        Some("--release-guard") => (|| {
+            let _lease = moth_ipc::maintenance::UpdateLease::acquire()
+                .map_err(|_| "Stop the service/VPN before administrator recovery")?;
+            moth_engine::guard::release().map_err(|_| "Could not remove Moth egress rules")
+        })()
+        .map_err(str::to_owned),
         Some("--check-install" | "--check-installed") => {
             let root = if std::env::args().nth(1).as_deref() == Some("--check-installed") {
                 std::env::var_os("ProgramFiles")

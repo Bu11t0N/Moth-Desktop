@@ -34,6 +34,7 @@ pub struct Updater {
 fn status(app: &AppHandle, change: impl FnOnce(&mut Status)) {
     if let Ok(mut inner) = app.state::<Updater>().inner.lock() {
         change(&mut inner.status);
+        crate::diagnostics::update(app, &inner.status.phase);
         let _ = app.emit("moth-update-progress", inner.status.clone());
     }
 }

@@ -17,7 +17,7 @@ $env:ComSpec = [IO.Path]::Combine($env:SystemRoot,'System32\cmd.exe')
 if ([IntPtr]::Size -ne 8) { throw '64-bit PowerShell is required for Moth Desktop maintenance.' }
 $serviceName = 'MothDesktopService'
 $installRoot = Join-Path $env:ProgramFiles 'Moth Desktop'
-$expectedVersion = '0.3.4'
+$expectedVersion = '0.3.5'
 trap {
     # The graphical installer uses a protected temporary payload directory.
     # Keep a bounded, credential-free reason there when its silent run fails.
@@ -121,6 +121,18 @@ if ($Action -eq 'Remove') {
     $installed = $null
     if ($InstallDesktop) { $installed = Read-Payload $installRoot 'installed-files.json' }
     Stop-Moth
+    # Explicit removal releases only Moth's persistent filters. An upgrade or
+    # ordinary service stop must never silently clear the chosen protection.
+    if ($service -and (Test-Path -LiteralPath $serviceExe)) {
+        $guardServiceVersion = & $serviceExe --version
+        if ($LASTEXITCODE -ne 0) { throw 'Could not determine installed service version.' }
+        if ([Version]$guardServiceVersion -ge [Version]'0.3.5') {
+            & $serviceExe --release-guard
+            if ($LASTEXITCODE -ne 0) { throw 'Could not release Moth egress guard; installation preserved for administrator recovery.' }
+        } elseif (Test-Path -LiteralPath (Join-Path $env:ProgramData 'Moth Desktop/egress-guard-v1.json')) {
+            throw 'A newer Moth egress guard is present. Use the 0.3.5 administrator recovery tool before removing this older installation.'
+        }
+    }
     if ($service) {
         & "$env:SystemRoot\System32\sc.exe" delete $serviceName | Out-Null
         if ($LASTEXITCODE -ne 0) { throw 'Service deletion failed' }

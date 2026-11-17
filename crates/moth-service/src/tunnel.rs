@@ -21,6 +21,7 @@ struct Connection {
 }
 #[derive(Default)]
 pub struct Controller {
+    guard: Mutex<Option<moth_engine::guard::Policy>>,
     inner: Mutex<Connection>,
     operation: Mutex<()>,
     generation: AtomicU64,
@@ -30,6 +31,163 @@ struct ConnectAttempt {
     automatic: bool,
 }
 impl Controller {
+    pub async fn traffic(&self, caller: &str) -> Reply {
+        let state = self.inner.lock().await;
+        if state.owner.as_deref() != Some(caller) || state.phase != TunnelPhase::Connected {
+            return Reply::Failure {
+                code: ErrorCode::NotOwner,
+            };
+        }
+        let Some(api) = state.session.as_ref().and_then(|s| s.telemetry()) else {
+            return Reply::Failure {
+                code: ErrorCode::Unsupported,
+            };
+        };
+        drop(state);
+        let result = api.snapshot().await;
+        let mut state = self.inner.lock().await;
+        let same = state.owner.as_deref() == Some(caller)
+            && state.phase == TunnelPhase::Connected
+            && state.session.as_mut().is_some_and(|s| {
+                s.alive()
+                    && s.telemetry()
+                        .is_some_and(|current| current.session() == api.session())
+            });
+        if !same {
+            return Reply::Failure {
+                code: ErrorCode::TunnelFailed,
+            };
+        }
+        match result {
+            Ok(snapshot) => Reply::Traffic(snapshot),
+            Err(_) => Reply::Failure {
+                code: ErrorCode::Unsupported,
+            },
+        }
+    }
+    pub async fn restore_guard(&self) -> Result<(), moth_ipc::IpcError> {
+        let policy = tokio::task::spawn_blocking(|| {
+            moth_engine::guard::restore()?;
+            moth_engine::guard::load()
+        })
+        .await
+        .map_err(|_| moth_ipc::IpcError::Unavailable)?
+        .map_err(|_| moth_ipc::IpcError::Unavailable)?;
+        *self.guard.lock().await = policy;
+        Ok(())
+    }
+    pub async fn guard_status(&self, caller: &str) -> Reply {
+        let guard = self.guard.lock().await;
+        let filtering = if guard.is_some() {
+            match tokio::task::spawn_blocking(moth_engine::guard::active).await {
+                Ok(Ok(filtering)) => filtering,
+                _ => {
+                    return Reply::Failure {
+                        code: ErrorCode::TunnelFailed,
+                    }
+                }
+            }
+        } else {
+            false
+        };
+        Reply::Guard(moth_ipc::GuardState {
+            enabled: guard.is_some(),
+            filtering,
+            owned_by_caller: guard.as_ref().is_some_and(|p| p.owner == caller),
+        })
+    }
+    pub async fn set_guard(&self, caller: &str, enabled: bool) -> Reply {
+        let Ok(_operation) = self.operation.try_lock() else {
+            return Reply::Failure {
+                code: ErrorCode::Busy,
+            };
+        };
+        let Ok(_maintenance) = moth_ipc::maintenance::TunnelLease::acquire() else {
+            return Reply::Failure {
+                code: ErrorCode::Busy,
+            };
+        };
+        let mut guard = self.guard.lock().await;
+        if guard.as_ref().is_some_and(|g| g.owner != caller) {
+            return Reply::Failure {
+                code: ErrorCode::NotOwner,
+            };
+        }
+        if enabled {
+            let state = self.inner.lock().await;
+            if state.owner.as_deref() != Some(caller)
+                || state.phase != TunnelPhase::Connected
+                || !guard_compatible(&state.policy)
+            {
+                return Reply::Failure {
+                    code: ErrorCode::InvalidProfile,
+                };
+            }
+            let (Some(profile), Some(session)) = (&state.profile, &state.session) else {
+                return Reply::Failure {
+                    code: ErrorCode::TunnelFailed,
+                };
+            };
+            let primary = moth_engine::guard::Endpoint {
+                host: profile.host.clone(),
+                address: session.endpoint().ip(),
+                port: session.endpoint().port(),
+            };
+            let candidates = state.candidates.clone();
+            drop(state);
+            let mut endpoints = vec![primary];
+            // Resolve backups while the established TUN is still active. No
+            // unrestricted DNS exception is added when a candidate fails.
+            for p in candidates.iter().take(7) {
+                if endpoints
+                    .iter()
+                    .any(|e| e.host == p.host && e.port == p.port)
+                {
+                    continue;
+                }
+                if let Ok(Ok(addresses)) = tokio::time::timeout(
+                    Duration::from_secs(3),
+                    tokio::net::lookup_host((p.host.as_str(), p.port)),
+                )
+                .await
+                {
+                    for address in addresses.take(3) {
+                        endpoints.push(moth_engine::guard::Endpoint {
+                            host: p.host.clone(),
+                            address: address.ip(),
+                            port: address.port(),
+                        });
+                    }
+                }
+            }
+            let Ok(policy) = moth_engine::guard::Policy::new(caller.into(), endpoints) else {
+                return Reply::Failure {
+                    code: ErrorCode::InvalidProfile,
+                };
+            };
+            let copy = policy.clone();
+            let outcome =
+                tokio::task::spawn_blocking(move || moth_engine::guard::enable(&copy)).await;
+            *guard = Some(policy);
+            if !matches!(outcome, Ok(Ok(()))) {
+                return Reply::Failure {
+                    code: ErrorCode::TunnelFailed,
+                };
+            }
+        } else {
+            if !matches!(
+                tokio::task::spawn_blocking(moth_engine::guard::release).await,
+                Ok(Ok(()))
+            ) {
+                return Reply::Failure {
+                    code: ErrorCode::TunnelFailed,
+                };
+            }
+            *guard = None;
+        }
+        drop(guard);
+        self.guard_status(caller).await
+    }
     pub async fn active_profile(&self, caller: &str) -> Reply {
         let state = self.inner.lock().await;
         Reply::ActiveProfile(if state.owner.as_deref() == Some(caller) {
@@ -100,6 +258,19 @@ impl Controller {
         policy: &moth_core::ConnectionSettings,
         candidates: &[moth_core::Profile],
     ) -> Reply {
+        {
+            let guard = self.guard.lock().await;
+            if guard.as_ref().is_some_and(|g| g.owner != caller) {
+                return Reply::Failure {
+                    code: ErrorCode::NotOwner,
+                };
+            }
+            if guard.is_some() && !guard_compatible(policy) {
+                return Reply::Failure {
+                    code: ErrorCode::InvalidProfile,
+                };
+            }
+        }
         let expected = {
             let state = self.inner.lock().await;
             if state.owner.as_deref().is_some_and(|owner| owner != caller) {
@@ -248,6 +419,17 @@ impl Controller {
         self.status(caller).await
     }
     pub async fn disconnect(&self, caller: &str) -> Reply {
+        if self
+            .guard
+            .lock()
+            .await
+            .as_ref()
+            .is_some_and(|g| g.owner != caller)
+        {
+            return Reply::Failure {
+                code: ErrorCode::NotOwner,
+            };
+        }
         {
             let mut state = self.inner.lock().await;
             if state.owner.as_deref().is_some_and(|owner| owner != caller) {
@@ -430,9 +612,36 @@ impl Controller {
     }
 }
 
+fn guard_compatible(policy: &moth_core::ConnectionSettings) -> bool {
+    policy.split_apps.is_empty()
+        && !policy
+            .rules
+            .iter()
+            .any(|r| r.enabled && r.target == moth_core::RuleTarget::Direct)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn guard_rejects_all_direct_bypass_policies() {
+        let mut p = moth_core::ConnectionSettings::default();
+        assert!(guard_compatible(&p));
+        p.split_apps.push("/usr/bin/curl".into());
+        assert!(!guard_compatible(&p));
+        p.split_apps.clear();
+        p.rules.push(moth_core::RoutingRule {
+            id: uuid::Uuid::new_v4(),
+            name: "rule".into(),
+            enabled: true,
+            kind: moth_core::RuleKind::Suffix,
+            value: "example.com".into(),
+            target: moth_core::RuleTarget::Direct,
+        });
+        assert!(!guard_compatible(&p));
+        p.rules[0].enabled = false;
+        assert!(guard_compatible(&p));
+    }
     #[tokio::test]
     async fn manual_stop_cancels_pending_recovery_and_other_accounts_cannot_obtain_proxy() {
         let controller = Controller::default();

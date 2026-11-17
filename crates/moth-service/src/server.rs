@@ -65,6 +65,9 @@ pub async fn run(
     let capacity = Arc::new(Semaphore::new(8));
     let gate = Arc::new(Mutex::new(()));
     let tunnel = Arc::new(crate::tunnel::Controller::default());
+    if !development {
+        tunnel.restore_guard().await?;
+    }
     let mut monitor = tokio::time::interval(Duration::from_millis(500));
     let mut tasks = JoinSet::new();
     loop {

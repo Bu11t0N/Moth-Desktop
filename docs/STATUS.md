@@ -1,5 +1,13 @@
 # Status — 2026-11-16
 
+## 0.3.5 in development
+
+- Persistent egress guard groundwork uses an isolated WFP provider/sublayer on Windows and an owned nftables table on Ubuntu. Typed owner controls, pinned endpoint cache, explicit recovery CLI and early Ubuntu restore unit are implemented. Disconnect/Exit retain the opt-in block; uninstall explicitly releases only Moth rules. Direct rules and application splitting are rejected while enabled.
+- Local Windows compile/Clippy, Linux service cross-check and targeted policy/confirmation/English UI tests pass. Kernel filtering, crash/reboot behavior, upgrade/uninstall and absence of leaks are **not yet accepted**. No persistent/power-loss protection claim is made from these local checks.
+- Traffic/connections, diagnostics, login autostart, proxy/LAN, additional profiles and completed application pages remain in progress. No 0.3.5 packages or release are published.
+
+Version 0.3.4 was published from `9c792b62cd9152a4d2627123392f7a9ab613a6bc`. [All five native jobs](https://github.com/Bu11t0N/Moth-Desktop/actions/runs/43905111907) and [production signing, Linux verification and publication](https://github.com/Bu11t0N/Moth-Desktop/actions/runs/43909590598) passed. Downloaded release checksums, signed metadata and all three package signatures were independently verified.
+
 ## 0.3.4 candidate
 
 - Windows installer source is explicitly read as UTF-8. The license page uses a BOM-marked UTF-16LE build copy with CRLF, preserving the source text.

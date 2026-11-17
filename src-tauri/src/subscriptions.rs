@@ -183,6 +183,7 @@ async fn download(
 
 #[tauri::command]
 pub async fn refresh_subscription(id: Uuid, app: tauri::AppHandle) -> Result<Snapshot, String> {
+    crate::diagnostics::record(&app, crate::diagnostics::Code::SubscriptionStarted);
     let state = app.state::<AppState>();
     let _gate = state
         .subscription_gate
@@ -268,6 +269,14 @@ pub async fn refresh_subscription(id: Uuid, app: tauri::AppHandle) -> Result<Sna
             }
         })?;
         let _ = app.emit("moth-library-changed", ());
+        crate::diagnostics::record(
+            &app,
+            if failure.is_some() {
+                crate::diagnostics::Code::SubscriptionFailed
+            } else {
+                crate::diagnostics::Code::SubscriptionSucceeded
+            },
+        );
         if let Some(error) = failure {
             Err(error)
         } else {

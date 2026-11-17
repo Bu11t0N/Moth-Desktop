@@ -1,3 +1,7 @@
+import {diagnosticsHtml,bindDiagnostics} from "./diagnostics";
+import {aboutHtml,bindAbout} from "./about";
+import {trafficHtml,bindTraffic} from "./traffic";
+import {guardHtml,guardBanner,bindGuard,refreshGuard,guardEnabled,guardVerified} from "./guard";
 import { applyPreferences, observeLocalization } from "./preferences";
 import { networkSettingsHtml, bindNetworkSettings } from "./settings";
 import { backupHtml, bindBackup } from "./backup";
@@ -21,7 +25,7 @@ import {
 const app = document.querySelector<HTMLDivElement>("#app")!;
 observeLocalization(app);
 let state: Snapshot = structuredClone(empty);
-let page: "home" | "servers" | "settings" = "home";
+let page: "home" | "servers" | "settings" | "activity" | "diagnostics" | "about" = "home";
 let busy = false;
 let error = "";
 let serviceMessage = "Ещё не проверена";
@@ -47,6 +51,9 @@ let bulkChecking=false;
 let bulkCancel=false;
 
 const icons = {
+  diagnostics: '<path d="M4 5h16v14H4zM8 9h8M8 13h5"/>',
+  about: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/>',
+  activity: '<path d="M3 18h18M4 14l5-7 5 4 6-8"/>',
   home: '<path d="m3 11 9-8 9 8M5 10v10h5v-6h4v6h5V10"/>',
   servers:
     '<rect x="4" y="3" width="16" height="7" rx="2"/><rect x="4" y="14" width="16" height="7" rx="2"/><path d="M8 6h.01M8 17h.01M12 6h5M12 17h5"/>',
@@ -101,7 +108,10 @@ function render() {
         [
           ["home", "Главная"],
           ["servers", "Серверы"],
+          ["activity", "Статистика"],
           ["settings", "Настройки"],
+          ["diagnostics", "Диагностика"],
+          ["about", "О приложении"],
         ] as const
       )
         .map(
@@ -111,10 +121,10 @@ function render() {
         .join("")}</nav>
       <div class="sidebar-bottom"><span class="version-dot"></span> Версия для разработки<small>${escapeHtml(state.version)} · ${linux ? "Linux x86_64" : "Windows x64"}</small></div>
     </aside>
-    <main><header><div class="breadcrumb">MOTH DESKTOP <span>/</span> ${page === "home" ? "ОБЗОР" : page === "servers" ? "СЕРВЕРЫ" : "НАСТРОЙКИ"}</div><span class="build-badge">0.3.4</span></header>
+    <main><header><div class="breadcrumb">MOTH DESKTOP <span>/</span> ${page === "home" ? "ОБЗОР" : page === "servers" ? "СЕРВЕРЫ" : page === "activity" ? "СТАТИСТИКА" : page === "diagnostics" ? "ДИАГНОСТИКА" : page === "about" ? "О ПРИЛОЖЕНИИ" : "НАСТРОЙКИ"}</div><span class="build-badge">0.3.5</span></header>
     ${!native ? '<div class="preview-note">Просмотр интерфейса в браузере. Профили и подключение доступны только в настольном приложении.</div>' : ""}
     ${error ? `<div class="error" role="alert">${escapeHtml(error)}</div>` : ""}
-    <section class="content">
+    ${guardBanner()}<section class="content">
     ${
       page === "home"
         ? `
@@ -122,7 +132,7 @@ function render() {
       <div class="overview"><article class="connection-card"><div class="card-top"><span class="status"><i></i> ${status}</span><span class="muted small">СИСТЕМНЫЙ ТУННЕЛЬ</span></div>
         <div class="moth-orbit"><div class="orbit-inner">${moth}</div></div>
         <h2>${!serviceAvailable ? "Служба недоступна" : { disconnected: "VPN отключён", connecting: "Подключение VPN…", connected: vpn.error ? "Ошибка проверки VPN" : "VPN подключён", disconnecting: "Отключение VPN…", failed: vpn.ownedByCaller ? "Восстановление подключения…" : "Ошибка VPN" }[vpn.phase]}</h2><p class="card-description" role="status">${escapeHtml(vpnMessage)}</p>
-        <button class="connect" ${!native || !serviceAvailable || (vpnBusy && !canCancel) || (active && !vpn.ownedByCaller) || (!active && !selected) ? "disabled" : ""}>${canCancel ? "Отменить подключение" : vpnBusy ? "Выполняем…" : active ? "Отключить" : "Подключить"}</button><p class="protection-note">${icon("shield")} ${connected ? "Туннель проверен · kill switch пока недоступен" : "VPN сейчас не защищает трафик"}</p>
+        <button class="connect" ${!native || !serviceAvailable || (vpnBusy && !canCancel) || (active && !vpn.ownedByCaller) || (!active && !selected) ? "disabled" : ""}>${canCancel ? "Отменить подключение" : vpnBusy ? "Выполняем…" : active ? "Отключить" : "Подключить"}</button><p class="protection-note">${icon("shield")} ${connected ? (guardVerified()?"Туннель проверен · kill switch включён":"Туннель проверен · kill switch не подтверждён") : "VPN сейчас не защищает трафик"}</p>
       </article><div class="right-column"><article class="selected-card"><div class="card-top"><h3>Выбранный сервер</h3><span class="tiny-label">01</span></div>
         ${selected ? `<div class="server-emblem">${icon("servers")}</div><h2 class="selected-name">${escapeHtml(selected.name)}</h2><p class="endpoint">${escapeHtml(selected.host)}:${selected.port}</p><div class="tags"><span>${escapeHtml(selected.protocol)}</span><span>${escapeHtml(selected.security)}</span></div>` : `<div class="server-emblem">${icon("servers")}</div><h2>Нет выбранного сервера</h2><p class="muted">Добавь ссылку от своего провайдера<br>или владельца сервера.</p>`}
         <button class="text-link" data-page="servers">${selected ? "Все серверы" : "Открыть список серверов"} ${icon("arrow")}</button></article>
@@ -131,15 +141,21 @@ function render() {
     `
         : page === "servers"
           ? libraryHtml(state, {busy, active, probingId, results:probeResults, icon:icon("servers")})
-          : `<div class="page-heading"><div><p class="eyebrow">ПАРАМЕТРЫ</p><h1>Настройки</h1><p class="muted">Состояние этой сборки и доступные возможности</p></div></div>
-      ${networkSettingsHtml(state)}${backupHtml()}<article class="settings-card"><h2>Приложение</h2><div class="setting"><span>Версия</span><strong>${escapeHtml(state.version)} · Preview</strong></div><div class="setting"><span>Платформа</span><strong>${escapeHtml(state.capabilities.platform)}</strong></div><div class="setting"><span>Защищённое хранилище</span><strong>${state.capabilities.secureStorage ? (linux ? "Secret Service" : "Windows DPAPI") : "Недоступно в этом режиме"}</strong></div><div class="setting"><span>Системный VPN</span><strong>${state.capabilities.systemTunnel && serviceAvailable && serviceHealth?.protocol === 2 && serviceHealth.systemTunnel && serviceHealth.engines.length > 0 && serviceHealth.engines.every((e) => e.available) ? "Доступен через службу" : "Не подтверждён"}</strong></div><div class="setting"><span>Kill switch</span><strong>${state.capabilities.killSwitch ? "Доступен" : "Не реализован"}</strong></div></article>
-      <article class="settings-card"><h2>Служба VPN</h2><p class="muted" role="status" aria-label="Состояние службы">${escapeHtml(serviceMessage)}</p>${serviceHealth ? `<div class="setting"><span>Протокол управления</span><strong>${serviceHealth.protocol === 2 ? "Совместим · IPC 2" : "Несовместим"}</strong></div>${serviceHealth.engines.map((e) => `<div class="setting"><span>Ядро службы: ${escapeHtml(e.name)}</span><strong>${escapeHtml(e.version)} · ${e.available ? "Проверено" : "Недоступно"}</strong></div>`).join("")}` : ""}<button class="button subtle service-refresh" ${serviceChecking ? "disabled" : ""}>${serviceChecking ? "Проверяем…" : "Проверить связь со службой"}</button><p class="muted">Для VPN нужна служба Moth с протоколом IPC 2 (0.3.1–0.3.4). ${installationHint}</p></article><article class="settings-card"><h2>Ядра приложения</h2>${(state.engines || []).map((e) => `<div class="setting"><span>${escapeHtml(e.name)} ${escapeHtml(e.version)}</span><strong>${e.available ? "Хэш проверен при запуске" : escapeHtml(e.message || "Недоступен")}</strong></div>`).join("")}<p class="muted">HTTPS-проверка проходит через выбранный сервер. Её результат — не ICMP ping и не признак включённого системного VPN.</p></article><article class="settings-card"><h2>Ограничения</h2><p class="muted">Без автовосстановления после смены сети подключитесь заново. Kill switch ещё не реализован. Автовосстановление включается отдельно в настройках. При сбое ядра туннель отключается, система возвращается к обычной сети.</p></article>`
+          : page === "activity" ? trafficHtml()
+          : page === "diagnostics" ? `${diagnosticsHtml()}<article class="settings-card"><h2>Служба VPN</h2><div class="setting"><span>Системный VPN</span><strong>${state.capabilities.systemTunnel && serviceAvailable && serviceHealth?.protocol === 2 && serviceHealth.systemTunnel && serviceHealth.engines.length > 0 && serviceHealth.engines.every((e) => e.available) ? "Доступен через службу" : "Не подтверждён"}</strong></div><p class="muted" role="status" aria-label="Состояние службы">${escapeHtml(serviceMessage)}</p>${serviceHealth ? `<div class="setting"><span>Протокол управления</span><strong>${serviceHealth.protocol === 2 ? "Совместим · IPC 2" : "Несовместим"}</strong></div>${serviceHealth.engines.map((e) => `<div class="setting"><span>Ядро службы: ${escapeHtml(e.name)}</span><strong>${escapeHtml(e.version)} · ${e.available ? "Проверено" : "Недоступно"}</strong></div>`).join("")}` : ""}<button class="button subtle service-refresh" ${serviceChecking ? "disabled" : ""}>${serviceChecking ? "Проверяем…" : "Проверить связь со службой"}</button><p class="muted">Для VPN нужна служба Moth с протоколом IPC 2 (0.3.1–0.3.5). ${installationHint}</p></article>`
+          : page === "about" ? aboutHtml(state)
+          : `<div class="page-heading"><div><p class="eyebrow">ПАРАМЕТРЫ</p><h1>Настройки</h1><p class="muted">Соединение, защита и поведение приложения</p></div></div>
+      ${guardHtml()}${networkSettingsHtml(state)}${backupHtml()}`
     }
-    </section><footer><span>MOTH · OPEN SOURCE</span><button class="button subtle app-quit" ${native ? "" : "disabled"}>Выйти</button></footer></main></div>
+    </section><footer><span>MOTH · OPEN SOURCE</span><button class="button subtle app-quit" ${native ? "" : "disabled"}>${guardEnabled()?"Выйти, сохранить блокировку":"Выйти"}</button></footer></main></div>
     <dialog id="import-dialog"><form id="import-form"><div class="dialog-heading"><div><p class="eyebrow">ИМПОРТ</p><h2>Добавить серверы</h2></div><button type="button" class="close" aria-label="Закрыть">×</button></div><label for="server-links">Ссылки серверов</label><textarea id="server-links" required rows="6" autocomplete="off" spellcheck="false" placeholder="vless://… или trojan://…"></textarea><p class="dialog-help">По одной ссылке на строку, Base64-список, Clash YAML или поддерживаемый JSON. Для URL провайдера используйте «Добавить подписку».</p><p id="import-error" class="dialog-error" role="alert"></p><div class="dialog-actions"><button type="button" class="button subtle close">Отмена</button><button class="button" type="submit">Импортировать</button></div></form></dialog>
     <dialog id="delete-dialog"><form method="dialog"><h2>Удалить сервер?</h2><p>Он исчезнет из локального списка.</p><div class="dialog-actions"><button class="button subtle" value="cancel">Отмена</button><button class="button" value="delete">Удалить</button></div></form></dialog>`;
   applyPreferences(app,state.settings);
   bindNetworkSettings(app,state,(next)=>{state=next;render();},render);
+  bindGuard(app,render);
+  bindTraffic(app);
+  bindDiagnostics(app);
+  bindAbout(app);
   bindBackup(app,(next)=>{state=next;render();});
   bindLibrary(app,state,(next)=>{state=next;render();},render,(e)=>{error=message(e);render();});
   const bulk=app.querySelector<HTMLButtonElement>("[data-probe-all]");
@@ -409,6 +425,7 @@ setInterval(async () => {
   refreshing = true;
   try {
     await refreshVpn();
+    if(await refreshGuard()){if(!app.querySelector("dialog[open]"))render();}
   } finally {
     refreshing = false;
   }

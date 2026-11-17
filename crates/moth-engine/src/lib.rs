@@ -1,5 +1,8 @@
 //! Verified external engines; no Tauri, privileged operations or OS routing changes.
+#[cfg(any(windows, target_os = "linux"))]
+pub mod guard;
 mod job;
+pub mod telemetry;
 #[cfg(windows)]
 mod tunnel;
 #[cfg(windows)]
@@ -191,6 +194,32 @@ pub struct EngineSet {
     directory: PathBuf,
 }
 impl EngineSet {
+    async fn attach_telemetry(
+        &self,
+        config: &mut serde_json::Value,
+    ) -> Result<
+        (
+            Option<std::sync::Arc<telemetry::Api>>,
+            Option<std::net::TcpListener>,
+        ),
+        EngineError,
+    > {
+        let Ok((api, reservation)) = telemetry::Api::configure(config) else {
+            self.validate(Engine::SingBox, config).await?;
+            return Ok((None, None));
+        };
+        if self.validate(Engine::SingBox, config).await.is_ok() {
+            return Ok((Some(api), Some(reservation)));
+        }
+        // Telemetry is optional. Never drop a routing/security option to make a
+        // config pass: only remove our own auxiliary API and revalidate.
+        config["experimental"]
+            .as_object_mut()
+            .ok_or(EngineError::InvalidConfig)?
+            .remove("clash_api");
+        self.validate(Engine::SingBox, config).await?;
+        Ok((None, None))
+    }
     pub fn new(directory: PathBuf) -> Self {
         Self { directory }
     }
@@ -386,6 +415,27 @@ impl EngineSet {
         drop(listener);
         let password = Uuid::new_v4().simple().to_string();
         let mut config = moth_core::xray_check_config(profile);
+        #[cfg(any(windows, target_os = "linux"))]
+        if let Some(guard) = guard::load()? {
+            let address = guard
+                .address(&profile.host, profile.port)
+                .ok_or(EngineError::Network)?;
+            let key = if matches!(
+                profile.protocol,
+                moth_core::Protocol::Vless | moth_core::Protocol::Vmess
+            ) {
+                "vnext"
+            } else {
+                "servers"
+            };
+            config["outbounds"][0]["settings"][key][0]["address"] =
+                serde_json::json!(address.to_string());
+            #[cfg(target_os = "linux")]
+            {
+                config["outbounds"][0]["streamSettings"]["sockopt"]["mark"] =
+                    serde_json::json!(0x4d4f5448u32);
+            }
+        }
         config["inbounds"] = serde_json::json!([{"listen":"127.0.0.1","port":port,"protocol":"socks","settings":{"auth":"password","accounts":[{"user":"moth","pass":password}],"udp":false}}]);
         let mut process = self.spawn_config(Engine::Xray, &config, false).await?;
         let start = Instant::now();

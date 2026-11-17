@@ -53,6 +53,7 @@ pub fn export_backup(library: &Library, password: &str) -> Result<String, &'stat
     let mut data =
         serde_json::to_value(library).map_err(|_| "Не удалось создать резервную копию")?;
     data.as_object_mut().unwrap().remove("deviceId");
+    data.as_object_mut().unwrap().remove("trafficHistory");
     let plain = Zeroizing::new(
         serde_json::to_vec(&json!({"library":data,"appVersion":env!("CARGO_PKG_VERSION")}))
             .map_err(|_| "Не удалось создать резервную копию")?,
@@ -144,6 +145,7 @@ pub fn read_backup(text: &str, password: &str) -> Result<DecodedBackup, &'static
         android(&payload)?
     };
     decoded.library.device_id = Uuid::new_v4();
+    decoded.library.traffic_history = Default::default();
     decoded.library.settings.auto_connect = false;
     for source in &mut decoded.library.subscriptions {
         source.send_hwid = false;

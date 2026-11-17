@@ -6,11 +6,12 @@
     "linux": {
       "deb": {
         "desktopTemplate": "../packaging/linux/moth-desktop.desktop",
-        "depends": ["systemd (>= 255)", "systemd-resolved", "init-system-helpers", "iproute2", "python3", "gnome-keyring", "dpkg-repack", "pkexec", "procps", "libwebkit2gtk-4.1-0", "libgtk-3-0t64", "libayatana-appindicator3-1"],
+        "depends": ["systemd (>= 255)", "systemd-resolved", "init-system-helpers", "iproute2", "nftables", "python3", "gnome-keyring", "dpkg-repack", "pkexec", "procps", "libwebkit2gtk-4.1-0", "libgtk-3-0t64", "libayatana-appindicator3-1"],
         "files": {
           "/usr/lib/moth-desktop/moth-service": "../target/release/moth-service",
           "/usr/lib/moth-desktop/moth-maintenance": "../target/release/moth-maintenance",
-          "/usr/lib/systemd/system/moth-desktop.service": "../packaging/linux/moth-desktop.service"
+          "/usr/lib/systemd/system/moth-desktop.service": "../packaging/linux/moth-desktop.service",
+          "/usr/lib/systemd/system/moth-egress-guard.service": "../packaging/linux/moth-egress-guard.service"
         },
         "preInstallScript": "../packaging/linux/preinst",
         "postInstallScript": "../packaging/linux/postinst",

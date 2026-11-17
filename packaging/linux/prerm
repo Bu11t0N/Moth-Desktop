@@ -7,6 +7,10 @@ case "${1:-}" in
       exit 1
     fi
     deb-systemd-invoke stop moth-desktop.service >/dev/null
+    if [ "${1:-}" = remove ]; then
+      /usr/lib/moth-desktop/moth-service --release-guard
+      deb-systemd-invoke stop moth-egress-guard.service >/dev/null
+    fi
     ;;
 esac
 exit 0

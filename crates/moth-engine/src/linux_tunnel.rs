@@ -327,6 +327,8 @@ impl NetworkLease {
 }
 
 pub struct Tunnel {
+    telemetry: Option<std::sync::Arc<crate::telemetry::Api>>,
+    endpoint: std::net::SocketAddr,
     subscription_proxy: moth_ipc::DownloadProxy,
     tun: EngineProcess,
     upstream: EngineProcess,
@@ -334,6 +336,12 @@ pub struct Tunnel {
     _maintenance: moth_ipc::maintenance::TunnelLease,
 }
 impl Tunnel {
+    pub fn telemetry(&self) -> Option<std::sync::Arc<crate::telemetry::Api>> {
+        self.telemetry.clone()
+    }
+    pub fn endpoint(&self) -> std::net::SocketAddr {
+        self.endpoint
+    }
     pub fn subscription_proxy(&self) -> moth_ipc::DownloadProxy {
         self.subscription_proxy.clone()
     }
@@ -360,15 +368,7 @@ impl EngineSet {
         policy.validate().map_err(|_| EngineError::InvalidConfig)?;
         let maintenance =
             moth_ipc::maintenance::TunnelLease::acquire().map_err(|_| EngineError::Maintenance)?;
-        let address = timeout(
-            Duration::from_secs(5),
-            tokio::net::lookup_host((profile.host.as_str(), profile.port)),
-        )
-        .await
-        .map_err(|_| EngineError::Timeout)?
-        .map_err(|_| EngineError::Network)?
-        .next()
-        .ok_or(EngineError::Network)?;
+        let address = guard::resolve(profile).await?;
         let family = if address.is_ipv4() { "-4" } else { "-6" };
         let routes = array(&ip(&[
             family,
@@ -435,7 +435,7 @@ impl EngineSet {
         tun_config["inbounds"][0]["iproute2_table_index"] = serde_json::json!(20220);
         tun_config["inbounds"].as_array_mut().ok_or(EngineError::Process)?.push(serde_json::json!({"type":"mixed","tag":"subscription-in","listen":"127.0.0.1","listen_port":subscription_proxy.port,"users":[{"username":subscription_proxy.username,"password":subscription_proxy.password}]}));
         self.validate(Engine::Xray, &config).await?;
-        self.validate(Engine::SingBox, &tun_config).await?;
+        let (telemetry, telemetry_reservation) = self.attach_telemetry(&mut tun_config).await?;
         let lease = NetworkLease::acquire()?;
         drop(reservation);
         let mut upstream = self.spawn_config(Engine::Xray, &config, false).await?;
@@ -461,10 +461,13 @@ impl EngineSet {
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
         drop(proxy_reservation);
+        drop(telemetry_reservation);
         let tun = self
             .spawn_config(Engine::SingBox, &tun_config, false)
             .await?;
         let mut session = Tunnel {
+            telemetry,
+            endpoint: address,
             subscription_proxy,
             tun,
             upstream,

@@ -48,7 +48,7 @@ test("preview never claims protection; navigation and import failure are honest"
       .filter({ hasText: "Импорт доступен в настольном приложении" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Отмена", exact: true }).click();
-  await page.getByRole("button", { name: "Настройки", exact: true }).click();
+  await page.getByRole("button", { name: "О приложении", exact: true }).click();
   await expect(page.getByText("Недоступно в этом режиме")).toBeVisible();
 });
 
@@ -231,7 +231,7 @@ test("authenticated service health is separate from VPN protection", async ({
     };
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "Настройки", exact: true }).click();
+  await page.getByRole("button", { name: "Диагностика", exact: true }).click();
   await page
     .getByRole("button", { name: "Проверить связь со службой", exact: true })
     .click();
@@ -313,7 +313,7 @@ test("VPN follows service transitions and loses connected state when service dis
   await page.getByRole("button", { name: "Подключить", exact: true }).click();
   await expect(page.getByText("VPN сейчас не защищает трафик")).toBeVisible();
   await expect(
-    page.getByText("Туннель проверен · kill switch пока недоступен"),
+    page.getByText("Туннель проверен · kill switch не подтверждён"),
   ).toBeVisible();
   await page.getByRole("button", { name: "Отключить", exact: true }).click();
   await expect(page.getByText("VPN сейчас не защищает трафик")).toBeVisible();
@@ -439,7 +439,7 @@ test("diagnostics support IPC 2 service 0.3.1 and clear stale health after failu
     };
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "Настройки", exact: true }).click();
+  await page.getByRole("button", { name: "Диагностика", exact: true }).click();
   const refresh = page.getByRole("button", {
     name: "Проверить связь со службой",
     exact: true,
@@ -523,7 +523,7 @@ for (const delayedHealth of [false, true]) {
       };
     }, delayedHealth);
     await page.goto("/");
-    await page.getByRole("button", { name: "Настройки", exact: true }).click();
+    await page.getByRole("button", { name: "Диагностика", exact: true }).click();
     const refresh = page.getByRole("button", {
       name: "Проверить связь со службой",
       exact: true,

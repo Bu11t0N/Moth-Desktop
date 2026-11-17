@@ -136,6 +136,8 @@ impl Profile {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Library {
+    #[serde(default)]
+    pub traffic_history: crate::TrafficHistory,
     pub profiles: Vec<Profile>,
     pub selected: Option<Uuid>,
     #[serde(default)]
@@ -153,6 +155,7 @@ pub struct Library {
 impl Default for Library {
     fn default() -> Self {
         Self {
+            traffic_history: Default::default(),
             profiles: Vec::new(),
             selected: None,
             subscriptions: Vec::new(),
@@ -198,6 +201,7 @@ impl Library {
         before != self.profiles.len()
     }
     pub fn validate(&self) -> Result<(), &'static str> {
+        self.traffic_history.validate()?;
         self.settings.validate()?;
         if self.device_id.is_nil() || self.subscriptions.len() > 100 {
             return Err("Некорректное хранилище подписок");

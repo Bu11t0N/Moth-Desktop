@@ -17,6 +17,7 @@ pub struct DesktopLifecycle {
     pub controls: RwLock<()>,
     pub busy: AtomicBool,
     pub(super) allow_exit: AtomicBool,
+    guard_enabled: AtomicBool,
     tray: Option<TrayIcon>,
     #[cfg(target_os = "linux")]
     pub(super) tray_available: AtomicBool,
@@ -147,6 +148,7 @@ pub fn request_action(app: &AppHandle, exit: bool) {
 
 async fn refresh(app: &AppHandle) {
     let state = service_call(Command::TunnelStatus {}).await;
+    crate::diagnostics::observe(app, state.as_ref().ok());
     let lifecycle = app.state::<DesktopLifecycle>();
     if lifecycle.busy.load(Ordering::Acquire) {
         return;
@@ -201,7 +203,27 @@ async fn refresh(app: &AppHandle) {
     let _ = lifecycle
         .disconnect
         .set_text(localized(app, "Отключить VPN", "Disconnect VPN"));
-    let _ = lifecycle.quit.set_text(localized(app, "Выход", "Exit"));
+    if let Ok(moth_ipc::Response {
+        result: Reply::Guard(guard),
+        ..
+    }) = moth_ipc::ServiceClient::production()
+        .call(Command::GuardStatus {})
+        .await
+    {
+        lifecycle
+            .guard_enabled
+            .store(guard.enabled, Ordering::Release);
+    }
+    let guard = lifecycle.guard_enabled.load(Ordering::Acquire);
+    let _ = lifecycle.quit.set_text(if guard {
+        localized(
+            app,
+            "Выйти, сохранить блокировку",
+            "Exit and keep network blocked",
+        )
+    } else {
+        localized(app, "Выход", "Exit")
+    });
     if let Some(tray) = &lifecycle.tray {
         let _ = tray.set_tooltip(Some(format!("Moth — {text}")));
     }
@@ -259,6 +281,7 @@ pub fn setup(app: &tauri::App) -> tauri::Result<()> {
     #[cfg(not(target_os = "linux"))]
     let tray = Some(builder.build(app)?);
     app.manage(DesktopLifecycle {
+        guard_enabled: AtomicBool::new(false),
         controls: RwLock::new(()),
         busy: AtomicBool::new(false),
         allow_exit: AtomicBool::new(false),

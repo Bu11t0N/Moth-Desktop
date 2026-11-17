@@ -1,7 +1,8 @@
 [Unit]
 Description=Moth Desktop VPN service
 Requires=systemd-resolved.service
-After=network.target systemd-resolved.service
+After=network.target systemd-resolved.service moth-egress-guard.service
+Requires=moth-egress-guard.service
 
 [Service]
 Type=simple
@@ -24,7 +25,7 @@ AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW CAP_DAC_READ_SEARCH CAP_SYS_PTRACE
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/run/moth-desktop
+ReadWritePaths=/run/moth-desktop /var/lib/moth-desktop
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectKernelLogs=yes

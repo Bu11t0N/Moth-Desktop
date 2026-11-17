@@ -46,7 +46,7 @@ export const native = isTauri();
 export const empty: Snapshot = {
   profiles: [],
   selected: null,
-  version: "0.3.4",
+  version: "0.3.5",
   engines: [],
   capabilities: {
     platform: "browser",

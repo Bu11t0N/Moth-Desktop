@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use uuid::Uuid;
 use zeroize::Zeroizing;
+mod telemetry;
+pub use telemetry::*;
 
 #[cfg(target_os = "linux")]
 pub mod linux;
@@ -47,6 +49,11 @@ pub enum Command {
     TunnelStatus {},
     SubscriptionProxy {},
     ActiveProfile {},
+    GuardStatus {},
+    Traffic {},
+    SetGuard {
+        enabled: bool,
+    },
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -96,6 +103,8 @@ pub enum Reply {
     Tunnel(TunnelState),
     SubscriptionProxy(DownloadProxy),
     ActiveProfile(Option<moth_core::ProfileSummary>),
+    Guard(GuardState),
+    Traffic(TrafficSnapshot),
     Failure { code: ErrorCode },
 }
 
@@ -136,6 +145,13 @@ pub struct TunnelState {
     pub phase: TunnelPhase,
     pub owned_by_caller: bool,
     pub error: Option<ErrorCode>,
+}
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GuardState {
+    pub enabled: bool,
+    pub filtering: bool,
+    pub owned_by_caller: bool,
 }
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

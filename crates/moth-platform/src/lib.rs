@@ -215,7 +215,7 @@ pub fn capabilities() -> Capabilities {
         platform: std::env::consts::OS,
         secure_storage: cfg!(any(windows, target_os = "linux")),
         system_tunnel: cfg!(any(windows, target_os = "linux")),
-        kill_switch: false,
+        kill_switch: cfg!(any(windows, target_os = "linux")),
     }
 }
 

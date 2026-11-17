@@ -34,6 +34,17 @@ pub async fn dispatch(
                 })
             }
             Command::TunnelStatus {} => tunnel.status(caller).await,
+            Command::Traffic {} if !development => tunnel.traffic(caller).await,
+            Command::Traffic {} => Reply::Failure {
+                code: ErrorCode::Unsupported,
+            },
+            Command::GuardStatus {} if !development => tunnel.guard_status(caller).await,
+            Command::SetGuard { enabled } if !development => {
+                tunnel.set_guard(caller, *enabled).await
+            }
+            Command::GuardStatus {} | Command::SetGuard { .. } => Reply::Failure {
+                code: ErrorCode::Unsupported,
+            },
             Command::ActiveProfile {} => tunnel.active_profile(caller).await,
             Command::SubscriptionProxy {} if !development => {
                 tunnel.subscription_proxy(caller).await

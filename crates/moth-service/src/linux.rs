@@ -23,6 +23,16 @@ pub fn main() -> Result<(), String> {
             println!("{}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
+        Some("--restore-guard") => {
+            require_root().map_err(|e| e.to_string())?;
+            moth_engine::guard::restore().map_err(|_| "Could not restore Moth egress guard".into())
+        }
+        Some("--release-guard") => {
+            require_root().map_err(|e| e.to_string())?;
+            let _lease = moth_ipc::maintenance::UpdateLease::acquire()
+                .map_err(|_| "Stop the service/VPN before administrator recovery")?;
+            moth_engine::guard::release().map_err(|_| "Could not remove Moth egress rules".into())
+        }
         Some("--check-install" | "--check-installed") => {
             moth_ipc::linux::validate_installation().map_err(|e| e.to_string())
         }
@@ -169,6 +179,7 @@ async fn run(mut shutdown: watch::Receiver<bool>) -> Result<(), IpcError> {
     let capacity = Arc::new(Semaphore::new(8));
     let gate = Arc::new(Mutex::new(()));
     let tunnel = Arc::new(crate::tunnel::Controller::default());
+    tunnel.restore_guard().await?;
     let mut tasks = JoinSet::new();
     let mut monitor = tokio::time::interval(Duration::from_millis(500));
     loop {

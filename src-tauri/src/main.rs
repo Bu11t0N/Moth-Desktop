@@ -5,16 +5,21 @@ use serde::Serialize;
 use std::sync::Mutex;
 use tauri::Manager;
 use uuid::Uuid;
+mod about;
 mod backup;
+mod diagnostics;
+mod guard;
 #[cfg(all(any(windows, target_os = "linux"), debug_assertions))]
 mod native_acceptance;
 mod subscriptions;
+mod traffic;
 mod tray;
 mod updater;
 #[cfg(all(any(windows, target_os = "linux"), debug_assertions))]
 mod updater_acceptance;
 
 struct AppState {
+    diagnostics: diagnostics::Journal,
     store: ProfileStore,
     library: Mutex<Library>,
     engines: moth_engine::EngineSet,
@@ -62,7 +67,12 @@ fn mutate(
     let mut library = state.library.lock().map_err(|_| "Хранилище недоступно")?;
     let mut next = library.clone();
     change(&mut next)?;
-    state.store.save(&next).map_err(|e| e.to_string())?;
+    state.store.save(&next).map_err(|e| {
+        state
+            .diagnostics
+            .record(diagnostics::Code::StorageFailed, None);
+        e.to_string()
+    })?;
     *library = next;
     Ok(snapshot(&library, &state.engine_status))
 }
@@ -200,7 +210,9 @@ async fn tunnel_call(command: moth_ipc::Command) -> Result<moth_ipc::TunnelState
 }
 #[tauri::command]
 async fn tunnel_status(app: tauri::AppHandle) -> Result<moth_ipc::TunnelState, String> {
-    let status = tunnel_call(moth_ipc::Command::TunnelStatus {}).await?;
+    let outcome = tunnel_call(moth_ipc::Command::TunnelStatus {}).await;
+    diagnostics::observe(&app, outcome.as_ref().ok());
+    let status = outcome?;
     #[cfg(any(windows, target_os = "linux"))]
     if status.owned_by_caller && status.phase == moth_ipc::TunnelPhase::Connected {
         let failover = app
@@ -294,7 +306,8 @@ async fn connect_vpn(
             candidates,
         )
     };
-    if policy == moth_core::ConnectionSettings::default() {
+    diagnostics::record(&app, diagnostics::Code::ConnectStarted);
+    let result = if policy == moth_core::ConnectionSettings::default() {
         tunnel_call(moth_ipc::Command::Connect { link }).await
     } else {
         tunnel_call(moth_ipc::Command::ConnectWithPolicy {
@@ -304,7 +317,12 @@ async fn connect_vpn(
             candidates,
         })
         .await
-    }
+    };
+    match &result {
+        Ok(status) => diagnostics::observe(&app, Some(status)),
+        Err(_) => diagnostics::record(&app, diagnostics::Code::ConnectFailed),
+    };
+    result
 }
 fn main() {
     if std::env::args().nth(1).as_deref() == Some("--version") {
@@ -344,6 +362,7 @@ fn main() {
     tauri::Builder::default()
         .manage(updater::state(None))
         .manage(backup::BackupState::default())
+        .manage(traffic::TrafficState::default())
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             tray::show_main(app)
         }))
@@ -372,6 +391,7 @@ fn main() {
             let engines = moth_engine::EngineSet::new(engine_directory);
             let engine_status = engines.status();
             app.manage(AppState {
+                diagnostics: diagnostics::Journal::default(),
                 store,
                 library: Mutex::new(library),
                 engines,
@@ -391,6 +411,14 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             get_snapshot,
+            about::license_document,
+            diagnostics::diagnostic_snapshot,
+            diagnostics::clear_diagnostics,
+            guard::egress_guard_status,
+            traffic::traffic_snapshot,
+            traffic::traffic_history,
+            traffic::set_traffic_history,
+            guard::set_egress_guard,
             backup::export_backup,
             backup::preview_backup,
             backup::confirm_backup,

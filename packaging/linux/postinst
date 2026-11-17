@@ -10,6 +10,9 @@ case "${1:-}" in
     [ "$(/usr/lib/moth-desktop/moth-maintenance --version)" = "$expected" ]
     /usr/lib/moth-desktop/moth-maintenance --install
     systemctl daemon-reload
+    deb-systemd-helper unmask moth-egress-guard.service >/dev/null
+    deb-systemd-helper enable moth-egress-guard.service >/dev/null
+    deb-systemd-invoke start moth-egress-guard.service >/dev/null
     deb-systemd-helper unmask moth-desktop.service >/dev/null
     if deb-systemd-helper --quiet was-enabled moth-desktop.service; then
       deb-systemd-helper enable moth-desktop.service >/dev/null

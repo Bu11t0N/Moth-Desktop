@@ -1,0 +1,19 @@
+[Unit]
+Description=Restore Moth opt-in egress guard before networking
+DefaultDependencies=no
+After=local-fs.target
+Before=network-pre.target shutdown.target
+Wants=network-pre.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/moth-desktop/moth-service --restore-guard
+RemainAfterExit=yes
+User=root
+Group=root
+UMask=0077
+# No ExecStop: an ordinary stop/restart must retain the chosen block policy.
+
+[Install]
+WantedBy=network-pre.target

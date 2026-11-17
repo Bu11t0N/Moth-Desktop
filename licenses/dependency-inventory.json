@@ -1,13 +1,13 @@
 {
   "generator": "cargo-about 0.9.3",
   "inputs": {
-    "Cargo.lock": "b2d4cc78bc650faec7de38843ff82312cbdc2cbfd1e407e156eeb410ee130c39",
-    "package-lock.json": "0e9145b66a48e031c97294cc6dbb5244fc753643c95c063e9449c97569231e5b",
+    "Cargo.lock": "102f4f42666a8abce59fac2bdd5ccd8134e71f741d04a1d992c56b6f1934a555",
+    "package-lock.json": "8487753faad94d11f062728b66c7376f154e8c074906d09ae425687bea0bbb8d",
     "about.toml": "8a0a4180ee326c6c7115decc89df4a41f370cee09d3818d2963269bcd2f790bf",
     "packaging/licenses.hbs": "0a12954318f78c424f9a99155d5206ac6c6ad9a79f3c3d09d6b1c2697ecd31f1"
   },
   "outputs": {
-    "licenses/Rust-dependencies.html": "effddeae693987bea575b155ea98a183ba3a5037cbeeb3660ecd8f25a31b82a5",
+    "licenses/Rust-dependencies.html": "b4b73ad55df2375647e68ef4cdafb0f2798131dd1e525c828c0f31d94a0b04bd",
     "licenses/tauri-api-MIT.txt": "9dd42ea92cff2ede5cd477cbfcce051b2d0115c0ac7f368ee88cb545055dff1d"
   },
   "javascript": {

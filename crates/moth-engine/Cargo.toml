@@ -20,7 +20,7 @@ reqwest = {version="0.12",default-features=false,features=["rustls-tls","socks"]
 tempfile = "3"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = {version="0.61",features=["Win32_System_JobObjects","Win32_Foundation","Win32_Security","Win32_NetworkManagement_IpHelper","Win32_NetworkManagement_Ndis","Win32_Networking_WinSock"]}
+windows-sys = {version="0.61",features=["Win32_System_JobObjects","Win32_Foundation","Win32_Security","Win32_Security_Authorization","Win32_System_Rpc","Win32_Storage_FileSystem","Win32_NetworkManagement_WindowsFilteringPlatform","Win32_NetworkManagement_IpHelper","Win32_NetworkManagement_Ndis","Win32_Networking_WinSock"]}
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"

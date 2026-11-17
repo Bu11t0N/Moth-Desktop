@@ -79,6 +79,12 @@ async fn pinned_engines_accept_supported_profile_matrix_and_tun_plan() {
     };
     let mut config = moth_core::sing_box_tun_policy(&bridge, &policy).unwrap();
     protect_verifier(&mut config, &policy).unwrap();
+    let (telemetry, reservation) = engines().attach_telemetry(&mut config).await.unwrap();
+    assert!(
+        telemetry.is_some(),
+        "Pinned engine must support the configured telemetry API"
+    );
+    drop(reservation);
     engines().validate(Engine::SingBox, &config).await.unwrap();
     // A regression in config generation must not be hidden by a zero exit assumption.
     assert!(matches!(

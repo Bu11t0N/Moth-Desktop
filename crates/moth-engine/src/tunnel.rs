@@ -9,12 +9,20 @@ use windows_sys::Win32::{
 /// Owns both engines and their Windows jobs. Dropping it tears down the private
 /// Wintun adapter/routes and the dynamic WFP session, including on cancellation.
 pub struct Tunnel {
+    telemetry: Option<std::sync::Arc<crate::telemetry::Api>>,
+    endpoint: SocketAddr,
     subscription_proxy: moth_ipc::DownloadProxy,
     tun: EngineProcess,
     upstream: EngineProcess,
     _maintenance: Option<moth_ipc::maintenance::TunnelLease>,
 }
 impl Tunnel {
+    pub fn telemetry(&self) -> Option<std::sync::Arc<crate::telemetry::Api>> {
+        self.telemetry.clone()
+    }
+    pub fn endpoint(&self) -> SocketAddr {
+        self.endpoint
+    }
     pub fn subscription_proxy(&self) -> moth_ipc::DownloadProxy {
         self.subscription_proxy.clone()
     }
@@ -108,15 +116,7 @@ impl EngineSet {
     ) -> Result<Tunnel, EngineError> {
         // Resolve the server before changing DNS/routes, then pin this connection
         // to one numeric address. TLS SNI/Reality/WS host remain unchanged.
-        let address: SocketAddr = timeout(
-            Duration::from_secs(5),
-            tokio::net::lookup_host((profile.host.as_str(), profile.port)),
-        )
-        .await
-        .map_err(|_| EngineError::Timeout)?
-        .map_err(|_| EngineError::Network)?
-        .next()
-        .ok_or(EngineError::Network)?;
+        let address = guard::resolve(profile).await?;
         let interface = upstream_interface(address.ip())?;
         let reservation =
             std::net::TcpListener::bind("127.0.0.1:0").map_err(|_| EngineError::Process)?;
@@ -155,7 +155,7 @@ impl EngineSet {
         protect_verifier(&mut tun_config, policy)?;
         tun_config["inbounds"].as_array_mut().ok_or(EngineError::Process)?.push(serde_json::json!({"type":"mixed","tag":"subscription-in","listen":"127.0.0.1","listen_port":subscription_proxy.port,"users":[{"username":subscription_proxy.username,"password":subscription_proxy.password}]}));
         self.validate(Engine::Xray, &config).await?;
-        self.validate(Engine::SingBox, &tun_config).await?;
+        let (telemetry, telemetry_reservation) = self.attach_telemetry(&mut tun_config).await?;
         drop(reservation);
         let mut upstream = self.spawn_config(Engine::Xray, &config, false).await?;
         let start = Instant::now();
@@ -185,10 +185,13 @@ impl EngineSet {
             eprintln!("Bound Xray bridge passed before TUN activation");
         }
         drop(proxy_reservation);
+        drop(telemetry_reservation);
         let tun = self
             .spawn_config(Engine::SingBox, &tun_config, false)
             .await?;
         let mut session = Tunnel {
+            telemetry,
+            endpoint: address,
             subscription_proxy,
             tun,
             upstream,
@@ -202,6 +205,22 @@ impl EngineSet {
             .build()
             .map_err(|_| EngineError::Probe)?;
         let start = Instant::now();
+        // Wintun is created by the child after spawn. Update the persistent
+        // scoped interface permit before performing the real TUN verifier.
+        if guard::load()?.is_some() {
+            loop {
+                let mut luid = windows_sys::Win32::NetworkManagement::Ndis::NET_LUID_LH::default();
+                let alias: Vec<u16> = "Moth".encode_utf16().chain(Some(0)).collect();
+                if unsafe { ConvertInterfaceAliasToLuid(alias.as_ptr(), &mut luid) } == 0 {
+                    break;
+                }
+                if start.elapsed() > Duration::from_secs(3) {
+                    return Err(EngineError::Network);
+                }
+                tokio::time::sleep(Duration::from_millis(30)).await;
+            }
+            guard::refresh_interface()?;
+        }
         loop {
             if !session.alive() {
                 return Err(EngineError::Process);
