@@ -2,6 +2,10 @@
 #[cfg(any(windows, target_os = "linux"))]
 pub mod guard;
 mod job;
+#[cfg(any(windows, target_os = "linux"))]
+mod proxy;
+#[cfg(any(windows, target_os = "linux"))]
+pub use proxy::{Session, SessionPlan};
 pub mod telemetry;
 #[cfg(windows)]
 mod tunnel;
@@ -148,6 +152,8 @@ pub enum EngineError {
     Network,
     #[error("Установка службы не готова или выполняется обновление")]
     Maintenance,
+    #[error("Адрес прокси недоступен или порт уже занят")]
+    PortUnavailable,
 }
 
 #[derive(Clone, Copy)]

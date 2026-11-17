@@ -34,6 +34,12 @@ pub async fn dispatch(
                 })
             }
             Command::TunnelStatus {} => tunnel.status(caller).await,
+            Command::ConnectionStatus {} => tunnel.connection_status(caller).await,
+            Command::ProxyAccess {} if !development => tunnel.proxy_access(caller).await,
+            Command::NativeRoute {} if !development => tunnel.native_route(caller).await,
+            Command::ProxyAccess {} | Command::NativeRoute {} => Reply::Failure {
+                code: ErrorCode::Unsupported,
+            },
             Command::Traffic {} if !development => tunnel.traffic(caller).await,
             Command::Traffic {} => Reply::Failure {
                 code: ErrorCode::Unsupported,
@@ -66,6 +72,13 @@ pub async fn dispatch(
                 policy,
                 profile_id,
                 candidates,
+            }
+            | Command::BeginConnection {
+                link,
+                policy,
+                profile_id,
+                candidates,
+                ..
             } if !development && policy.validate().is_ok() && candidates.len() <= 7 => {
                 match moth_core::import_links(link) {
                     Ok(mut profiles) if profiles.len() == 1 => {
@@ -93,16 +106,35 @@ pub async fn dispatch(
                             parsed.id = candidate.id;
                             backups.push(parsed);
                         }
-                        tunnel
-                            .connect_with_candidates(caller, &profile, engines, policy, &backups)
-                            .await
+                        if let Command::BeginConnection { mode, listener, .. } = &request.command {
+                            let Ok(plan) = moth_engine::SessionPlan::new(*mode, listener.clone())
+                            else {
+                                return Reply::Failure {
+                                    code: ErrorCode::InvalidProfile,
+                                };
+                            };
+                            let result = tunnel
+                                .connect_plan(caller, &profile, engines, policy, &backups, plan)
+                                .await;
+                            if matches!(result, Reply::Tunnel(_)) {
+                                tunnel.connection_status(caller).await
+                            } else {
+                                result
+                            }
+                        } else {
+                            tunnel
+                                .connect_with_candidates(
+                                    caller, &profile, engines, policy, &backups,
+                                )
+                                .await
+                        }
                     }
                     _ => Reply::Failure {
                         code: ErrorCode::InvalidProfile,
                     },
                 }
             }
-            Command::ConnectWithPolicy { .. } => Reply::Failure {
+            Command::ConnectWithPolicy { .. } | Command::BeginConnection { .. } => Reply::Failure {
                 code: ErrorCode::Unsupported,
             },
             Command::Connect { .. } | Command::Disconnect {} => Reply::Failure {

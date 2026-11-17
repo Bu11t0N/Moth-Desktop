@@ -2383,6 +2383,7 @@ dependencies = [
  "uuid",
  "windows-sys 0.61.2",
  "zbus",
+ "zeroize",
 ]
 
 [[package]]
@@ -2435,6 +2436,7 @@ dependencies = [
 name = "moth-platform"
 version = "0.3.5"
 dependencies = [
+ "libc",
  "moth-core",
  "secret-service",
  "serde",

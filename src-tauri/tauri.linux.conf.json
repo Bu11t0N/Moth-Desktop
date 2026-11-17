@@ -11,7 +11,9 @@
           "/usr/lib/moth-desktop/moth-service": "../target/release/moth-service",
           "/usr/lib/moth-desktop/moth-maintenance": "../target/release/moth-maintenance",
           "/usr/lib/systemd/system/moth-desktop.service": "../packaging/linux/moth-desktop.service",
-          "/usr/lib/systemd/system/moth-egress-guard.service": "../packaging/linux/moth-egress-guard.service"
+          "/usr/lib/systemd/system/moth-egress-guard.service": "../packaging/linux/moth-egress-guard.service",
+          "/usr/lib/systemd/system/NetworkManager.service.d/50-moth-egress-guard.conf": "../packaging/linux/50-moth-egress-guard.conf",
+          "/usr/lib/systemd/system/systemd-networkd.service.d/50-moth-egress-guard.conf": "../packaging/linux/50-moth-egress-guard.conf"
         },
         "preInstallScript": "../packaging/linux/preinst",
         "postInstallScript": "../packaging/linux/postinst",

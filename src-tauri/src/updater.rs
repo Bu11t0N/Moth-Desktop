@@ -149,7 +149,11 @@ pub async fn check_updates(app: AppHandle) -> Result<Status, String> {
         status.phase = "checking".into();
         status.error = None
     });
-    match moth_update::check(env!("CARGO_PKG_VERSION")).await {
+    let route = crate::proxy::native_route(&app, false)
+        .await
+        .map_err(|e| error(&app, e))?;
+    let route = crate::proxy::reqwest_proxy(route.as_ref()).map_err(|e| error(&app, e))?;
+    match moth_update::check_with_proxy(env!("CARGO_PKG_VERSION"), route).await {
         Ok(update) => {
             let summary = update
                 .as_ref()
@@ -225,8 +229,12 @@ pub async fn download_update(app: AppHandle) -> Result<Status, String> {
         status.error = None;
         status.downloaded = 0
     });
+    let route = crate::proxy::native_route(&app, false)
+        .await
+        .map_err(|e| error(&app, e))?;
+    let route = crate::proxy::reqwest_proxy(route.as_ref()).map_err(|e| error(&app, e))?;
     if let Err(e) = update
-        .download(&package, |downloaded, total| {
+        .download_with_proxy(&package, route, |downloaded, total| {
             status(&app, |status| {
                 status.downloaded = downloaded;
                 status.total = total
@@ -389,6 +397,7 @@ pub async fn install_update(app: AppHandle) -> Result<(), String> {
         crate::tray::stop_owned()
             .await
             .map_err(|_| "Не удалось подтвердить отключение VPN")?;
+        crate::proxy::restore_owned(&app).await?;
         tauri::async_runtime::spawn_blocking(move || {
             #[cfg(debug_assertions)]
             if let Some(result) = crate::updater_acceptance::authorize(&request) {

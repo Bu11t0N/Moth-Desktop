@@ -1,10 +1,13 @@
-# Status — 2026-11-16
+# Status — 2026-11-17
 
 ## 0.3.5 in development
 
 - Persistent egress guard groundwork uses an isolated WFP provider/sublayer on Windows and an owned nftables table on Ubuntu. Typed owner controls, pinned endpoint cache, explicit recovery CLI and early Ubuntu restore unit are implemented. Disconnect/Exit retain the opt-in block; uninstall explicitly releases only Moth rules. Direct rules and application splitting are rejected while enabled.
 - Local Windows compile/Clippy, Linux service cross-check and targeted policy/confirmation/English UI tests pass. Kernel filtering, crash/reboot behavior, upgrade/uninstall and absence of leaks are **not yet accepted**. No persistent/power-loss protection claim is made from these local checks.
-- Traffic/connections, diagnostics, login autostart, proxy/LAN, additional profiles and completed application pages remain in progress. No 0.3.5 packages or release are published.
+- Measured engine traffic/connections and bounded opt-in history, typed memory-only diagnostics with previewed export, Settings/Diagnostics/About and compiled license documents are implemented. Polling stops on hidden/unfocused windows. These are engine counters, not billing or whole-adapter measurements.
+- Ordinary-user login registration is separate from automatic connection. Owned HKCU Run or Linux desktop entries can be updated; foreign changes are preserved. Registration does not bypass OS startup restrictions.
+- Authenticated mixed HTTP/SOCKS proxy-only sessions create no TUN. Optional TUN sharing and explicit private-interface LAN allowlists use the same pinned engines. Legacy IPC never reports a proxy session as system VPN. Native subscription/update downloads use an explicit private upstream channel and retain blocked intent after proxy-only failures. Per-user WinINet/GNOME proxy restoration uses a protected ownership journal; these OS changes still require disposable native acceptance.
+- A real loopback-only engine test passed authenticated HTTP and SOCKS, rejected missing/wrong proxy passwords, measured nonzero traffic and reaped both processes. Windows workspace Clippy, Linux service/platform cross-check and targeted UI checks passed. LAN clients, OS proxy/startup registration, persistent firewall crash/boot behavior and package lifecycle remain unaccepted. Additional profiles and final packaging remain in progress. No 0.3.5 release is published.
 
 Version 0.3.4 was published from `9c792b62cd9152a4d2627123392f7a9ab613a6bc`. [All five native jobs](https://github.com/Bu11t0N/Moth-Desktop/actions/runs/43905111907) and [production signing, Linux verification and publication](https://github.com/Bu11t0N/Moth-Desktop/actions/runs/43909590598) passed. Downloaded release checksums, signed metadata and all three package signatures were independently verified.
 

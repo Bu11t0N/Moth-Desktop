@@ -6,11 +6,13 @@ use std::sync::Mutex;
 use tauri::Manager;
 use uuid::Uuid;
 mod about;
+mod autostart;
 mod backup;
 mod diagnostics;
 mod guard;
 #[cfg(all(any(windows, target_os = "linux"), debug_assertions))]
 mod native_acceptance;
+mod proxy;
 mod subscriptions;
 mod traffic;
 mod tray;
@@ -19,6 +21,8 @@ mod updater;
 mod updater_acceptance;
 
 struct AppState {
+    autostart_gate: Mutex<()>,
+    system_proxy_gate: Mutex<()>,
     diagnostics: diagnostics::Journal,
     store: ProfileStore,
     library: Mutex<Library>,
@@ -36,6 +40,7 @@ struct Snapshot {
     favorites: Vec<Uuid>,
     archived: Vec<Uuid>,
     settings: moth_core::ConnectionSettings,
+    proxy_preferences: moth_core::ProxyPreferences,
     selected: Option<Uuid>,
     capabilities: moth_platform::Capabilities,
     version: &'static str,
@@ -48,6 +53,7 @@ fn snapshot(library: &Library, engines: &[moth_engine::EngineStatus]) -> Snapsho
         favorites: library.favorites.clone(),
         archived: library.archived.clone(),
         settings: library.settings.clone(),
+        proxy_preferences: library.proxy_preferences.clone(),
         selected: library.selected,
         capabilities: moth_platform::capabilities(),
         version: env!("CARGO_PKG_VERSION"),
@@ -182,17 +188,24 @@ async fn service_status() -> Result<moth_ipc::Health, String> {
         Err("Системная служба этой платформы ещё не реализована".into())
     }
 }
-async fn tunnel_call(command: moth_ipc::Command) -> Result<moth_ipc::TunnelState, String> {
+async fn tunnel_call(command: moth_ipc::Command) -> Result<moth_ipc::ConnectionState, String> {
     #[cfg(any(windows, target_os = "linux"))]
     {
-        match moth_ipc::ServiceClient::production()
-            .call(command)
-            .await
-            .map_err(|e| e.to_string())?
-            .result
-        {
-            moth_ipc::Reply::Tunnel(state) => Ok(state),
+        let status_query = matches!(command, moth_ipc::Command::ConnectionStatus {});
+        let response = moth_ipc::ServiceClient::production().call(command).await;
+        let response = match response {
+            Err(moth_ipc::IpcError::Protocol) if status_query => {
+                moth_ipc::ServiceClient::production()
+                    .call(moth_ipc::Command::TunnelStatus {})
+                    .await
+            }
+            other => other,
+        };
+        match response.map_err(|e| e.to_string())?.result {
+            moth_ipc::Reply::Tunnel(state) => Ok(state.into()),
+            moth_ipc::Reply::Connection(state) => Ok(state),
             moth_ipc::Reply::Failure { code } => Err(match code {
+                moth_ipc::ErrorCode::PortUnavailable => "Адрес прокси недоступен или порт уже занят. Измените адрес/порт и подключитесь заново",
                 moth_ipc::ErrorCode::NotOwner => "Подключением управляет другая учётная запись",
                 moth_ipc::ErrorCode::Busy => "Служба уже выполняет действие; дождитесь завершения",
                 moth_ipc::ErrorCode::InvalidProfile => "Служба отклонила параметры сервера",
@@ -209,9 +222,12 @@ async fn tunnel_call(command: moth_ipc::Command) -> Result<moth_ipc::TunnelState
     }
 }
 #[tauri::command]
-async fn tunnel_status(app: tauri::AppHandle) -> Result<moth_ipc::TunnelState, String> {
-    let outcome = tunnel_call(moth_ipc::Command::TunnelStatus {}).await;
-    diagnostics::observe(&app, outcome.as_ref().ok());
+async fn tunnel_status(app: tauri::AppHandle) -> Result<moth_ipc::ConnectionState, String> {
+    let outcome = tunnel_call(moth_ipc::Command::ConnectionStatus {}).await;
+    diagnostics::observe(
+        &app,
+        outcome.as_ref().ok().map(|s| s.tunnel_state()).as_ref(),
+    );
     let status = outcome?;
     #[cfg(any(windows, target_os = "linux"))]
     if status.owned_by_caller && status.phase == moth_ipc::TunnelPhase::Connected {
@@ -257,8 +273,13 @@ async fn tunnel_status(app: tauri::AppHandle) -> Result<moth_ipc::TunnelState, S
     Ok(status)
 }
 #[tauri::command]
-async fn disconnect_vpn() -> Result<moth_ipc::TunnelState, String> {
-    tunnel_call(moth_ipc::Command::Disconnect {}).await
+async fn disconnect_vpn(app: tauri::AppHandle) -> Result<moth_ipc::ConnectionState, String> {
+    tray::stop_owned().await.map_err(|e| e.to_string())?;
+    let lifecycle = app.state::<tray::DesktopLifecycle>();
+    let _controls = lifecycle.controls.write().await;
+    tray::stop_owned().await.map_err(|e| e.to_string())?;
+    proxy::restore_owned(&app).await?;
+    tunnel_call(moth_ipc::Command::ConnectionStatus {}).await
 }
 #[tauri::command]
 fn quit_app(app: tauri::AppHandle) {
@@ -269,13 +290,13 @@ async fn connect_vpn(
     id: Uuid,
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
-) -> Result<moth_ipc::TunnelState, String> {
+) -> Result<moth_ipc::ConnectionState, String> {
     let lifecycle = app.state::<tray::DesktopLifecycle>();
     let _lease = lifecycle.controls.read().await;
     if lifecycle.busy.load(std::sync::atomic::Ordering::Acquire) {
         return Err("Дождись завершения отключения VPN".into());
     }
-    let (link, policy, candidates) = {
+    let (link, policy, candidates, preferences) = {
         let library = state.library.lock().map_err(|_| "Хранилище недоступно")?;
         let profile = library
             .profiles
@@ -304,10 +325,37 @@ async fn connect_vpn(
             moth_core::share_link(profile).map_err(str::to_owned)?,
             library.settings.clone(),
             candidates,
+            library.proxy_preferences.clone(),
         )
     };
+    preferences.validate().map_err(str::to_owned)?;
+    if preferences.mode == moth_core::ConnectionMode::Proxy || preferences.system_proxy {
+        let handle = app.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            let state = handle.state::<AppState>();
+            mutate(&state, |l| {
+                if l.system_proxy_ownership.is_some() {
+                    return Err("Сначала восстановите прежний системный прокси".into());
+                }
+                l.proxy_session_requested = true;
+                Ok(())
+            })
+        })
+        .await
+        .map_err(|_| "Не удалось сохранить режим подключения")??;
+    }
     diagnostics::record(&app, diagnostics::Code::ConnectStarted);
-    let result = if policy == moth_core::ConnectionSettings::default() {
+    let result = if preferences.public_listener().is_some() {
+        tunnel_call(moth_ipc::Command::BeginConnection {
+            link,
+            policy: Box::new(policy),
+            profile_id: id,
+            candidates,
+            mode: preferences.mode,
+            listener: preferences.public_listener().cloned(),
+        })
+        .await
+    } else if policy == moth_core::ConnectionSettings::default() {
         tunnel_call(moth_ipc::Command::Connect { link }).await
     } else {
         tunnel_call(moth_ipc::Command::ConnectWithPolicy {
@@ -319,9 +367,22 @@ async fn connect_vpn(
         .await
     };
     match &result {
-        Ok(status) => diagnostics::observe(&app, Some(status)),
+        Ok(status) => diagnostics::observe(&app, Some(&status.tunnel_state())),
         Err(_) => diagnostics::record(&app, diagnostics::Code::ConnectFailed),
     };
+    if result
+        .as_ref()
+        .is_ok_and(|s| s.phase == moth_ipc::TunnelPhase::Connected && s.owned_by_caller)
+        && preferences.system_proxy
+    {
+        if let Err(error) = proxy::apply_system(&app, preferences.listener.port).await {
+            // The selected OS mode failed. Keep the recovery journal until the
+            // owned settings are restored; never report a successful OS proxy.
+            let _ = tunnel_call(moth_ipc::Command::Disconnect {}).await;
+            let _ = proxy::restore_owned(&app).await;
+            return Err(error);
+        }
+    }
     result
 }
 fn main() {
@@ -391,6 +452,8 @@ fn main() {
             let engines = moth_engine::EngineSet::new(engine_directory);
             let engine_status = engines.status();
             app.manage(AppState {
+                autostart_gate: Mutex::new(()),
+                system_proxy_gate: Mutex::new(()),
                 diagnostics: diagnostics::Journal::default(),
                 store,
                 library: Mutex::new(library),
@@ -400,6 +463,7 @@ fn main() {
                 subscription_gate: tokio::sync::Mutex::new(()),
             });
             tray::setup(app)?;
+            autostart::reconcile(app.handle());
             subscriptions::schedule(app.handle().clone());
             if let Some(id) = automatic {
                 let handle = app.handle().clone();
@@ -411,6 +475,12 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             get_snapshot,
+            proxy::save_proxy_preferences,
+            proxy::system_proxy_status,
+            proxy::proxy_access,
+            proxy::restore_system_proxy,
+            autostart::autostart_status,
+            autostart::set_autostart,
             about::license_document,
             diagnostics::diagnostic_snapshot,
             diagnostics::clear_diagnostics,

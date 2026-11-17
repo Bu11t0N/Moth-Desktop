@@ -273,10 +273,18 @@ impl VerifiedUpdate {
     pub async fn download(
         &self,
         destination: &Path,
+        progress: impl FnMut(u64, u64),
+    ) -> Result<(), UpdateError> {
+        self.download_with_proxy(destination, None, progress).await
+    }
+    pub async fn download_with_proxy(
+        &self,
+        destination: &Path,
+        proxy: Option<reqwest::Proxy>,
         mut progress: impl FnMut(u64, u64),
     ) -> Result<(), UpdateError> {
         let artifact = self.manifest.artifact(Platform::current()?);
-        let mut response = client()?
+        let mut response = client(proxy)?
             .get(&artifact.url)
             .send()
             .await
@@ -316,8 +324,8 @@ impl VerifiedUpdate {
     }
 }
 
-fn client() -> Result<reqwest::Client, UpdateError> {
-    reqwest::Client::builder()
+fn client(proxy: Option<reqwest::Proxy>) -> Result<reqwest::Client, UpdateError> {
+    let builder = reqwest::Client::builder()
         .https_only(true)
         .no_proxy()
         .user_agent(concat!("Moth-Desktop/", env!("CARGO_PKG_VERSION")))
@@ -340,9 +348,13 @@ fn client() -> Result<reqwest::Client, UpdateError> {
             } else {
                 attempt.stop()
             }
-        }))
-        .build()
-        .map_err(|_| UpdateError::Network)
+        }));
+    let builder = if let Some(proxy) = proxy {
+        builder.proxy(proxy)
+    } else {
+        builder
+    };
+    builder.build().map_err(|_| UpdateError::Network)
 }
 async fn bounded_get(
     client: &reqwest::Client,
@@ -387,8 +399,14 @@ struct ReleaseAsset {
 /// GitHub is discovery only. The metadata and selected package each need a valid
 /// signature, exact repository URL, compatible protocol and monotonic version.
 pub async fn check(current_version: &str) -> Result<Option<VerifiedUpdate>, UpdateError> {
+    check_with_proxy(current_version, None).await
+}
+pub async fn check_with_proxy(
+    current_version: &str,
+    proxy: Option<reqwest::Proxy>,
+) -> Result<Option<VerifiedUpdate>, UpdateError> {
     let current = release_version(current_version)?;
-    let client = client()?;
+    let client = client(proxy)?;
     let bytes = bounded_get(&client, RELEASE_FEED, 2 * 1024 * 1024).await?;
     let releases: Vec<Release> =
         serde_json::from_slice(&bytes).map_err(|_| UpdateError::Manifest)?;

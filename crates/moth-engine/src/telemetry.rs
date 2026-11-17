@@ -45,6 +45,18 @@ impl Api {
     pub fn session(&self) -> &str {
         &self.session
     }
+    #[cfg(test)]
+    pub(crate) async fn assert_requires_authentication(&self) {
+        let response = reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .unwrap()
+            .get(format!("http://127.0.0.1:{}/connections", self.port))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::UNAUTHORIZED);
+    }
     pub async fn snapshot(&self) -> Result<TrafficSnapshot, EngineError> {
         let mut previous = self.previous.lock().await;
         let client = reqwest::Client::builder()

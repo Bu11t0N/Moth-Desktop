@@ -59,6 +59,7 @@ pub fn toggle_favorite(id: Uuid, state: tauri::State<AppState>) -> Result<Snapsh
 async fn download(
     source: &Subscription,
     device: Uuid,
+    proxy: Option<moth_ipc::DownloadProxy>,
 ) -> Result<(Vec<moth_core::Profile>, Quota), String> {
     let original =
         moth_core::subscription_url(&source.url, source.allow_http).map_err(str::to_owned)?;
@@ -68,36 +69,9 @@ async fn download(
         .redirect(reqwest::redirect::Policy::none())
         .connect_timeout(Duration::from_secs(15))
         .timeout(Duration::from_secs(25));
-    // A dedicated authenticated inbound belongs to the active service-owned
-    // tunnel and has proxy as its only outbound. No system-proxy/direct fallback.
-    let proxy = if source.vpn_only {
-        #[cfg(any(windows, target_os = "linux"))]
-        {
-            match moth_ipc::ServiceClient::production()
-                .call(moth_ipc::Command::SubscriptionProxy {})
-                .await
-            {
-                Ok(reply) => match reply.result {
-                    moth_ipc::Reply::SubscriptionProxy(proxy) => Some(proxy),
-                    _ => {
-                        return Err(
-                            "Для обновления нужен ваш активный VPN и служба 0.3.4 или новее".into(),
-                        )
-                    }
-                },
-                Err(_) => {
-                    return Err(
-                        "VPN-only: защищённый канал службы недоступен; прямой запрос запрещён"
-                            .into(),
-                    )
-                }
-            }
-        }
-        #[cfg(not(any(windows, target_os = "linux")))]
-        return Err("VPN-only на этой платформе недоступен".into());
-    } else {
-        None
-    };
+    if source.vpn_only && proxy.is_none() {
+        return Err("VPN-only: защищённый канал службы недоступен; прямой запрос запрещён".into());
+    }
     if let Some(proxy) = &proxy {
         builder = builder.proxy(
             reqwest::Proxy::all(format!("http://127.0.0.1:{}", proxy.port))
@@ -218,7 +192,10 @@ pub async fn refresh_subscription(id: Uuid, app: tauri::AppHandle) -> Result<Sna
     })
     .await
     .map_err(|_| "Обновление подписки прервано")??;
-    let outcome = download(&source, device).await;
+    let outcome = match crate::proxy::native_route(&app, source.vpn_only).await {
+        Ok(route) => download(&source, device, route).await,
+        Err(error) => Err(error),
+    };
     let app = app.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
@@ -354,14 +331,14 @@ mod tests {
             ("json", false, 1),
             ("yaml", false, 1),
         ] {
-            let result = download(&make(case, consent), device).await;
+            let result = download(&make(case, consent), device, None).await;
             assert!(result.is_ok(), "synthetic provider request failed");
             let (profiles, quota) = result.unwrap();
             assert!(profiles.len() == count);
             assert!(quota.used_bytes == Some(30) && quota.total_bytes == Some(100));
         }
         for case in ["partial", "limit", "denied", "oversize", "downgrade"] {
-            let result = download(&make(case, false), device).await;
+            let result = download(&make(case, false), device, None).await;
             assert!(result.is_err());
             let error = result.err().unwrap();
             assert!(
@@ -373,7 +350,7 @@ mod tests {
         let mut source = make("opt-out", false);
         source.vpn_only = true;
         assert!(
-            download(&source, device).await.is_err(),
+            download(&source, device, None).await.is_err(),
             "VPN-only must not fall back when no owned tunnel exists"
         );
     }

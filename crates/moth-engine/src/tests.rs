@@ -140,6 +140,78 @@ async fn real_vless_roundtrip_and_wrong_credential_failure() {
     let url = format!("http://127.0.0.1:{endpoint_port}/generate_204");
     let response = engines().probe_url(&profile, &url).await.unwrap();
     assert_eq!(response.profile_id, profile.id);
+    // Exercise the production mixed-listener path with only loopback fixtures.
+    // No global maintenance lease, TUN or OS proxy setting is created here.
+    let reserved = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let public_port = reserved.local_addr().unwrap().port();
+    drop(reserved);
+    let plan = SessionPlan::new(
+        moth_core::ConnectionMode::Proxy,
+        Some(moth_core::PublicProxyOptions {
+            port: public_port,
+            ..Default::default()
+        }),
+    )
+    .unwrap();
+    let mut proxy_session = engines()
+        .connect_proxy_inner(
+            &profile,
+            &Default::default(),
+            &plan,
+            None,
+            format!("127.0.0.1:{port}").parse().unwrap(),
+            &url,
+        )
+        .await
+        .unwrap();
+    let access = &plan.public.as_ref().unwrap().access;
+    for scheme in ["http", "socks5h"] {
+        let local = reqwest::Proxy::all(format!("{scheme}://127.0.0.1:{public_port}"))
+            .unwrap()
+            .basic_auth(&access.username, &access.password);
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .proxy(local)
+            .timeout(Duration::from_secs(5))
+            .build()
+            .unwrap();
+        assert_eq!(
+            client.get(&url).send().await.unwrap().status(),
+            reqwest::StatusCode::NO_CONTENT
+        );
+    }
+    for password in [None, Some("wrong-password")] {
+        let mut proxy = reqwest::Proxy::all(format!("http://127.0.0.1:{public_port}")).unwrap();
+        if let Some(password) = password {
+            proxy = proxy.basic_auth("moth", password);
+        }
+        let response = reqwest::Client::builder()
+            .no_proxy()
+            .proxy(proxy)
+            .build()
+            .unwrap()
+            .get(&url)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            reqwest::StatusCode::PROXY_AUTHENTICATION_REQUIRED
+        );
+    }
+    let api = proxy_session
+        .telemetry()
+        .expect("Pinned sing-box must support measured traffic");
+    api.assert_requires_authentication().await;
+    let measured = api.snapshot().await.unwrap();
+    assert!(measured.uploaded_bytes > 0 && measured.downloaded_bytes > 0);
+    assert!(proxy_session.alive());
+    proxy_session.stop().await;
+    assert!(
+        tokio::net::TcpStream::connect((std::net::Ipv4Addr::LOCALHOST, public_port))
+            .await
+            .is_err()
+    );
     #[cfg(windows)]
     {
         let reservation = std::net::TcpListener::bind("127.0.0.1:0").unwrap();

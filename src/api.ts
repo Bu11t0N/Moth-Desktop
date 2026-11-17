@@ -1,4 +1,5 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
+export type ProxyPreferences = {mode:"tun"|"proxy";shareWithTun:boolean;systemProxy:boolean;listener:{listen:string;port:number;allowedClients:string[]}};
 
 export type Profile = {
   id: string;
@@ -10,6 +11,7 @@ export type Profile = {
   security: string;
 };
 export type Snapshot = {
+  proxyPreferences?: ProxyPreferences;
   settings?: ConnectionSettings;
   subscriptions?: Subscription[];
   favorites?: string[];
@@ -85,6 +87,7 @@ export async function serviceStatus(): Promise<ServiceHealth> {
   return invoke<ServiceHealth>("service_status");
 }
 export type TunnelState = {
+  mode?: "tun" | "proxy";
   phase:
     "disconnected" | "connecting" | "connected" | "disconnecting" | "failed";
   ownedByCaller: boolean;

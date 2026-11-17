@@ -6,6 +6,7 @@ type Snapshot={version:string;platform:string;events:Event[]};
 const t=(ru:string,en:string)=>currentLanguage()==="en"?en:ru;
 const e=(s:string)=>s.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]!);
 const messages:Record<string,[string,string]>={
+  autostartEnabled:["Запись автозапуска включена","Startup registration enabled"],autostartDisabled:["Собственная запись автозапуска отключена","Owned startup registration disabled"],autostartFailed:["Автозапуск не изменён или не подтверждён","Startup registration change failed or is unverified"],
   disconnectStarted:["Начато отключение VPN","VPN disconnection started"],
   connectStarted:["Начато подключение","Connection started"],connectVerified:["Служба подтвердила туннель","Service verified the tunnel"],connectFailed:["Подключение или проверка туннеля не подтверждены","Connection or tunnel verification failed"],disconnected:["VPN отключён","VPN disconnected"],recovering:["Служба восстанавливает подключение","Service is recovering the connection"],serviceUnavailable:["Связь со службой недоступна; защита не подтверждена","Service is unavailable; protection is unverified"],
   subscriptionStarted:["Начато обновление подписки","Subscription refresh started"],subscriptionSucceeded:["Список подписки сохранён","Subscription list saved"],subscriptionFailed:["Подписка отклонена; подробности в карточке источника","Subscription refresh rejected; see its source card"],

@@ -116,7 +116,10 @@ pub fn request_action(app: &AppHandle, exit: bool) {
             // flight. A second stop closes the race with a not-yet-sent connect.
             stop_owned().await?;
             let _fence = lifecycle.controls.write().await;
-            stop_owned().await
+            stop_owned().await?;
+            crate::proxy::restore_owned(&app)
+                .await
+                .map_err(|_| IpcError::Unavailable)
         })
         .await;
         match result {
@@ -147,7 +150,11 @@ pub fn request_action(app: &AppHandle, exit: bool) {
 }
 
 async fn refresh(app: &AppHandle) {
-    let state = service_call(Command::TunnelStatus {}).await;
+    let connection = crate::tunnel_call(Command::ConnectionStatus {}).await;
+    let proxy_mode = connection
+        .as_ref()
+        .is_ok_and(|s| s.mode == moth_core::ConnectionMode::Proxy);
+    let state = connection.map(|s| s.tunnel_state());
     crate::diagnostics::observe(app, state.as_ref().ok());
     let lifecycle = app.state::<DesktopLifecycle>();
     if lifecycle.busy.load(Ordering::Acquire) {
@@ -162,6 +169,7 @@ async fn refresh(app: &AppHandle) {
                 TunnelPhase::Connected if state.error.is_some() => {
                     "Доступность VPN не подтверждена"
                 }
+                TunnelPhase::Connected if proxy_mode => "HTTP/SOCKS прокси подключён",
                 TunnelPhase::Connected => "VPN подключён",
                 TunnelPhase::Connecting => "Подключаем VPN…",
                 TunnelPhase::Disconnecting => "Отключаем VPN…",
@@ -185,6 +193,7 @@ async fn refresh(app: &AppHandle) {
             "VPN belongs to another account"
         }
         "VPN подключён" => "VPN connected",
+        "HTTP/SOCKS прокси подключён" => "HTTP/SOCKS proxy connected",
         "Доступность VPN не подтверждена" => {
             "VPN availability is unverified"
         }

@@ -10,7 +10,8 @@ struct Connection {
     phase: TunnelPhase,
     owner: Option<String>,
     error: Option<ErrorCode>,
-    session: Option<moth_engine::Tunnel>,
+    session: Option<moth_engine::Session>,
+    plan: moth_engine::SessionPlan,
     cancel: Option<watch::Sender<bool>>,
     profile: Option<moth_core::Profile>,
     candidates: Vec<moth_core::Profile>,
@@ -29,8 +30,61 @@ pub struct Controller {
 struct ConnectAttempt {
     generation: u64,
     automatic: bool,
+    plan: moth_engine::SessionPlan,
 }
 impl Controller {
+    pub async fn connection_status(&self, caller: &str) -> Reply {
+        let state = self.inner.lock().await;
+        Reply::Connection(moth_ipc::ConnectionState {
+            phase: state.phase,
+            owned_by_caller: state.owner.as_deref() == Some(caller),
+            error: state.error,
+            mode: state.plan.mode,
+        })
+    }
+    pub async fn proxy_access(&self, caller: &str) -> Reply {
+        let mut state = self.inner.lock().await;
+        if state.owner.as_deref() != Some(caller) {
+            return Reply::Failure {
+                code: ErrorCode::NotOwner,
+            };
+        }
+        if state.phase != TunnelPhase::Connected
+            || !state.session.as_mut().is_some_and(|s| s.alive())
+        {
+            return Reply::Failure {
+                code: ErrorCode::TunnelFailed,
+            };
+        }
+        match &state.plan.public {
+            Some(public) => Reply::ProxyAccess(public.access.clone()),
+            None => Reply::Failure {
+                code: ErrorCode::Unsupported,
+            },
+        }
+    }
+    pub async fn native_route(&self, caller: &str) -> Reply {
+        let guard = self.guard.lock().await;
+        let mut state = self.inner.lock().await;
+        let route =
+            if state.phase == TunnelPhase::Connected && state.owner.as_deref() == Some(caller) {
+                state
+                    .session
+                    .as_mut()
+                    .map_or(moth_ipc::NativeRoute::Blocked, |s| {
+                        if s.alive() {
+                            moth_ipc::NativeRoute::PrivateProxy(s.subscription_proxy())
+                        } else {
+                            moth_ipc::NativeRoute::Blocked
+                        }
+                    })
+            } else if guard.is_none() && state.phase == TunnelPhase::Disconnected {
+                moth_ipc::NativeRoute::Direct
+            } else {
+                moth_ipc::NativeRoute::Blocked
+            };
+        Reply::NativeRoute(route)
+    }
     pub async fn traffic(&self, caller: &str) -> Reply {
         let state = self.inner.lock().await;
         if state.owner.as_deref() != Some(caller) || state.phase != TunnelPhase::Connected {
@@ -118,6 +172,7 @@ impl Controller {
             if state.owner.as_deref() != Some(caller)
                 || state.phase != TunnelPhase::Connected
                 || !guard_compatible(&state.policy)
+                || state.plan.lan()
             {
                 return Reply::Failure {
                     code: ErrorCode::InvalidProfile,
@@ -220,10 +275,20 @@ impl Controller {
     }
     pub async fn status(&self, caller: &str) -> Reply {
         let state = self.inner.lock().await;
+        let legacy_proxy = state.plan.mode == moth_core::ConnectionMode::Proxy
+            && state.phase != TunnelPhase::Disconnected;
         Reply::Tunnel(TunnelState {
-            phase: state.phase,
+            phase: if legacy_proxy {
+                TunnelPhase::Failed
+            } else {
+                state.phase
+            },
             owned_by_caller: state.owner.as_deref() == Some(caller),
-            error: state.error,
+            error: if legacy_proxy {
+                Some(ErrorCode::Unsupported)
+            } else {
+                state.error
+            },
         })
     }
     pub async fn connect(
@@ -258,6 +323,25 @@ impl Controller {
         policy: &moth_core::ConnectionSettings,
         candidates: &[moth_core::Profile],
     ) -> Reply {
+        self.connect_plan(
+            caller,
+            profile,
+            engines,
+            policy,
+            candidates,
+            moth_engine::SessionPlan::default(),
+        )
+        .await
+    }
+    pub async fn connect_plan(
+        &self,
+        caller: &str,
+        profile: &moth_core::Profile,
+        engines: &moth_engine::EngineSet,
+        policy: &moth_core::ConnectionSettings,
+        candidates: &[moth_core::Profile],
+        plan: moth_engine::SessionPlan,
+    ) -> Reply {
         {
             let guard = self.guard.lock().await;
             if guard.as_ref().is_some_and(|g| g.owner != caller) {
@@ -265,7 +349,7 @@ impl Controller {
                     code: ErrorCode::NotOwner,
                 };
             }
-            if guard.is_some() && !guard_compatible(policy) {
+            if guard.is_some() && (!guard_compatible(policy) || plan.lan()) {
                 return Reply::Failure {
                     code: ErrorCode::InvalidProfile,
                 };
@@ -289,6 +373,7 @@ impl Controller {
             ConnectAttempt {
                 generation: expected,
                 automatic: false,
+                plan,
             },
         )
         .await
@@ -340,6 +425,7 @@ impl Controller {
                 backups.push(profile.clone());
             }
             *state = Connection {
+                plan: attempt.plan.clone(),
                 candidates: backups,
                 profile: Some(profile.clone()),
                 policy: policy.clone(),
@@ -351,9 +437,14 @@ impl Controller {
             };
         }
         let result = tokio::select! {
-            result = tokio::time::timeout(Duration::from_secs(25), engines.connect_with_policy(profile,policy)) => result.ok().and_then(Result::ok),
-            _ = cancelled.changed() => None,
+            result = tokio::time::timeout(Duration::from_secs(25), engines.connect_session(profile,policy,&attempt.plan)) => result.unwrap_or(Err(moth_engine::EngineError::Timeout)),
+            _ = cancelled.changed() => Err(moth_engine::EngineError::Process),
         };
+        let startup_error = match &result {
+            Err(moth_engine::EngineError::PortUnavailable) => ErrorCode::PortUnavailable,
+            _ => ErrorCode::TunnelFailed,
+        };
+        let result = result.ok();
         let result = match result {
             Some(session) if *cancelled.borrow() => {
                 session.stop().await;
@@ -401,7 +492,7 @@ impl Controller {
                 // On simultaneous completion/cancellation, teardown still happens.
                 drop(session);
                 state.phase = TunnelPhase::Failed;
-                state.error = Some(ErrorCode::TunnelFailed);
+                state.error = Some(startup_error);
                 state.failures = state.failures.saturating_add(1);
                 state.next_attempt = Some(
                     Instant::now()
@@ -556,13 +647,14 @@ impl Controller {
                         state.policy.clone(),
                         state.candidates.clone(),
                         state.failures,
+                        state.plan.clone(),
                     )
                 })
         } else {
             None
         };
         drop(state);
-        if let Some((owner, mut profile, policy, candidates, failures)) = retry {
+        if let Some((owner, mut profile, policy, candidates, failures, plan)) = retry {
             if policy.failover && failures >= 3 {
                 let mut fastest = None;
                 for candidate in candidates.iter().filter(|p| p.id != profile.id) {
@@ -598,6 +690,7 @@ impl Controller {
                     ConnectAttempt {
                         generation: expected,
                         automatic: true,
+                        plan,
                     },
                 )
                 .await;
@@ -623,6 +716,55 @@ fn guard_compatible(policy: &moth_core::ConnectionSettings) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn proxy_mode_never_reports_legacy_vpn_or_exposes_credentials_to_another_owner() {
+        let controller = Controller::default();
+        {
+            let mut state = controller.inner.lock().await;
+            state.phase = TunnelPhase::Connected;
+            state.owner = Some("owner".into());
+            state.plan = moth_engine::SessionPlan::new(
+                moth_core::ConnectionMode::Proxy,
+                Some(Default::default()),
+            )
+            .unwrap();
+        }
+        assert!(matches!(
+            controller.status("owner").await,
+            Reply::Tunnel(TunnelState {
+                phase: TunnelPhase::Failed,
+                error: Some(ErrorCode::Unsupported),
+                owned_by_caller: true
+            })
+        ));
+        assert!(matches!(
+            controller.connection_status("owner").await,
+            Reply::Connection(moth_ipc::ConnectionState {
+                mode: moth_core::ConnectionMode::Proxy,
+                phase: TunnelPhase::Connected,
+                ..
+            })
+        ));
+        assert!(matches!(
+            controller.proxy_access("other").await,
+            Reply::Failure {
+                code: ErrorCode::NotOwner
+            }
+        ));
+        assert!(matches!(
+            controller.native_route("owner").await,
+            Reply::NativeRoute(moth_ipc::NativeRoute::Blocked)
+        ));
+        assert!(matches!(
+            controller.native_route("other").await,
+            Reply::NativeRoute(moth_ipc::NativeRoute::Blocked)
+        ));
+        controller.disconnect("owner").await;
+        assert!(matches!(
+            controller.native_route("owner").await,
+            Reply::NativeRoute(moth_ipc::NativeRoute::Direct)
+        ));
+    }
     #[test]
     fn guard_rejects_all_direct_bypass_policies() {
         let mut p = moth_core::ConnectionSettings::default();

@@ -1,7 +1,9 @@
 //! UI-independent Moth domain model. No Tauri, OS calls or network access.
 mod backup;
 mod history;
+mod proxy;
 pub use history::*;
+pub use proxy::*;
 mod extra_protocols;
 mod formats;
 mod import;

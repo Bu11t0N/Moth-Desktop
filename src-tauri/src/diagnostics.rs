@@ -31,6 +31,9 @@ pub enum Code {
     GuardRelease,
     GuardVerified,
     GuardFailed,
+    AutostartEnabled,
+    AutostartDisabled,
+    AutostartFailed,
 }
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -98,6 +101,7 @@ fn push(inner: &mut Inner, code: Code, reason: Option<moth_ipc::ErrorCode>) {
         | Code::UpdateSuccess
         | Code::UpdateFailed => "update",
         Code::StorageFailed => "storage",
+        Code::AutostartEnabled | Code::AutostartDisabled | Code::AutostartFailed => "startup",
         Code::GuardEnable | Code::GuardRelease | Code::GuardVerified | Code::GuardFailed => "guard",
         _ => "connection",
     };
@@ -106,7 +110,8 @@ fn push(inner: &mut Inner, code: Code, reason: Option<moth_ipc::ErrorCode>) {
         | Code::SubscriptionFailed
         | Code::UpdateFailed
         | Code::StorageFailed
-        | Code::GuardFailed => "error",
+        | Code::GuardFailed
+        | Code::AutostartFailed => "error",
         Code::ServiceUnavailable | Code::Recovering => "warning",
         _ => "info",
     };

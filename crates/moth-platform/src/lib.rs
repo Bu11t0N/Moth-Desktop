@@ -5,6 +5,7 @@ use std::path::PathBuf;
 #[cfg(not(target_os = "linux"))]
 use std::{fs, io::Write};
 use zeroize::Zeroizing;
+pub mod autostart;
 /// Non-identifying OS/version/model headers. No host name, account or serial.
 pub fn subscription_device() -> moth_core::SubscriptionDevice {
     #[cfg(windows)]
@@ -239,3 +240,5 @@ mod tests {
         assert!(store.load().is_err());
     }
 }
+#[cfg(any(windows, target_os = "linux"))]
+pub mod system_proxy;

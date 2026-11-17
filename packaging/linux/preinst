@@ -2,6 +2,24 @@
 set -eu
 case "${1:-}" in
   install|upgrade)
+    # Do not overwrite an administrator's file or unpack through a foreign
+    # symlink. These fixed drop-ins make supported network managers depend on
+    # successful early guard restoration. Guard-off restoration returns success.
+    python3 - <<'PY'
+from pathlib import Path
+import stat
+body=b'[Unit]\nRequires=moth-egress-guard.service\nAfter=moth-egress-guard.service\n'
+for name in ('NetworkManager','systemd-networkd'):
+    parent=Path('/usr/lib/systemd/system')/(name+'.service.d')
+    path=parent/'50-moth-egress-guard.conf'
+    for node in (parent,path):
+        if node.exists() or node.is_symlink():
+            info=node.lstat()
+            if node.is_symlink() or info.st_uid!=0 or info.st_mode & 0o022:
+                raise SystemExit('Unsafe or foreign Moth network-manager drop-in; installation stopped.')
+    if path.exists() and (not path.is_file() or path.read_bytes()!=body):
+        raise SystemExit('Moth network-manager drop-in was modified externally; installation stopped.')
+PY
     if [ ! -d /run/systemd/system ]; then
       echo 'Moth Desktop requires a booted systemd system.' >&2
       exit 1

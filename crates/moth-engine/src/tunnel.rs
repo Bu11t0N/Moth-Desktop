@@ -86,11 +86,19 @@ impl EngineSet {
         profile: &Profile,
         policy: &moth_core::ConnectionSettings,
     ) -> Result<Tunnel, EngineError> {
+        self.connect_shared(profile, policy, None).await
+    }
+    pub(super) async fn connect_shared(
+        &self,
+        profile: &Profile,
+        policy: &moth_core::ConnectionSettings,
+        public: Option<&crate::proxy::PublicListener>,
+    ) -> Result<Tunnel, EngineError> {
         policy.validate().map_err(|_| EngineError::InvalidConfig)?;
         let lease =
             moth_ipc::maintenance::TunnelLease::acquire().map_err(|_| EngineError::Maintenance)?;
         let mut tunnel = self
-            .connect_checked_policy(profile, &policy.health_url, policy)
+            .connect_checked_policy(profile, &policy.health_url, policy, public)
             .await?;
         tunnel._maintenance = Some(lease);
         Ok(tunnel)
@@ -105,6 +113,7 @@ impl EngineSet {
             profile,
             check_url,
             &moth_core::ConnectionSettings::default(),
+            None,
         )
         .await
     }
@@ -113,6 +122,7 @@ impl EngineSet {
         profile: &Profile,
         check_url: &str,
         policy: &moth_core::ConnectionSettings,
+        public: Option<&crate::proxy::PublicListener>,
     ) -> Result<Tunnel, EngineError> {
         // Resolve the server before changing DNS/routes, then pin this connection
         // to one numeric address. TLS SNI/Reality/WS host remain unchanged.
@@ -154,6 +164,7 @@ impl EngineSet {
         tun_config["outbounds"][1]["bind_interface"] = serde_json::json!(interface);
         protect_verifier(&mut tun_config, policy)?;
         tun_config["inbounds"].as_array_mut().ok_or(EngineError::Process)?.push(serde_json::json!({"type":"mixed","tag":"subscription-in","listen":"127.0.0.1","listen_port":subscription_proxy.port,"users":[{"username":subscription_proxy.username,"password":subscription_proxy.password}]}));
+        let public_reservation = public.map(|p| p.add(&mut tun_config)).transpose()?;
         self.validate(Engine::Xray, &config).await?;
         let (telemetry, telemetry_reservation) = self.attach_telemetry(&mut tun_config).await?;
         drop(reservation);
@@ -184,6 +195,7 @@ impl EngineSet {
             fixture_bridge(&bridge, Ipv4Addr::new(198, 18, 0, 123), 18080).await;
             eprintln!("Bound Xray bridge passed before TUN activation");
         }
+        drop(public_reservation);
         drop(proxy_reservation);
         drop(telemetry_reservation);
         let tun = self
@@ -355,7 +367,7 @@ mod acceptance {
                     ..Default::default()
                 };
                 engines
-                    .connect_checked_policy(&profile, url, &policy)
+                    .connect_checked_policy(&profile, url, &policy, None)
                     .await
                     .unwrap()
             } else {

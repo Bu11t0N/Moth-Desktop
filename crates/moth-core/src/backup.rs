@@ -54,6 +54,14 @@ pub fn export_backup(library: &Library, password: &str) -> Result<String, &'stat
         serde_json::to_value(library).map_err(|_| "Не удалось создать резервную копию")?;
     data.as_object_mut().unwrap().remove("deviceId");
     data.as_object_mut().unwrap().remove("trafficHistory");
+    data.as_object_mut().unwrap().remove("autostartOwnership");
+    for name in [
+        "proxyPreferences",
+        "systemProxyOwnership",
+        "proxySessionRequested",
+    ] {
+        data.as_object_mut().unwrap().remove(name);
+    }
     let plain = Zeroizing::new(
         serde_json::to_vec(&json!({"library":data,"appVersion":env!("CARGO_PKG_VERSION")}))
             .map_err(|_| "Не удалось создать резервную копию")?,
@@ -146,6 +154,10 @@ pub fn read_backup(text: &str, password: &str) -> Result<DecodedBackup, &'static
     };
     decoded.library.device_id = Uuid::new_v4();
     decoded.library.traffic_history = Default::default();
+    decoded.library.autostart_ownership = None;
+    decoded.library.proxy_preferences = Default::default();
+    decoded.library.system_proxy_ownership = None;
+    decoded.library.proxy_session_requested = false;
     decoded.library.settings.auto_connect = false;
     for source in &mut decoded.library.subscriptions {
         source.send_hwid = false;
@@ -340,6 +352,11 @@ pub fn merge_backup(
     replace: bool,
 ) -> Result<Library, &'static str> {
     restored.device_id = current.device_id;
+    restored.autostart_ownership = current.autostart_ownership.clone();
+    restored.proxy_preferences = current.proxy_preferences.clone();
+    restored.system_proxy_ownership = current.system_proxy_ownership.clone();
+    restored.proxy_session_requested = current.proxy_session_requested;
+    restored.traffic_history = current.traffic_history.clone();
     if replace {
         restored.validate()?;
         return Ok(restored);

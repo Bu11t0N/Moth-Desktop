@@ -9,6 +9,9 @@ package=Path(sys.argv[1]).resolve(strict=True)
 root="usr/lib/moth-desktop/"
 required={"usr/bin/moth-desktop",root+"moth-service",root+"moth-maintenance",root+"engines/xray",root+"engines/sing-box","usr/lib/systemd/system/moth-desktop.service","usr/share/applications/moth-desktop.desktop"}
 found=set()
+required.update({'usr/lib/systemd/system/moth-egress-guard.service',
+    'usr/lib/systemd/system/NetworkManager.service.d/50-moth-egress-guard.conf',
+    'usr/lib/systemd/system/systemd-networkd.service.d/50-moth-egress-guard.conf'})
 process=subprocess.Popen(["dpkg-deb","--fsys-tarfile",str(package)],stdout=subprocess.PIPE)
 with tarfile.open(fileobj=process.stdout,mode="r|*") as archive:
     for entry in archive:

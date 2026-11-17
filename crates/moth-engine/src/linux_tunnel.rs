@@ -365,6 +365,14 @@ impl EngineSet {
         profile: &Profile,
         policy: &moth_core::ConnectionSettings,
     ) -> Result<Tunnel, EngineError> {
+        self.connect_shared(profile, policy, None).await
+    }
+    pub(super) async fn connect_shared(
+        &self,
+        profile: &Profile,
+        policy: &moth_core::ConnectionSettings,
+        public: Option<&crate::proxy::PublicListener>,
+    ) -> Result<Tunnel, EngineError> {
         policy.validate().map_err(|_| EngineError::InvalidConfig)?;
         let maintenance =
             moth_ipc::maintenance::TunnelLease::acquire().map_err(|_| EngineError::Maintenance)?;
@@ -434,6 +442,7 @@ impl EngineSet {
         tun_config["inbounds"][0]["strict_route"] = serde_json::json!(false);
         tun_config["inbounds"][0]["iproute2_table_index"] = serde_json::json!(20220);
         tun_config["inbounds"].as_array_mut().ok_or(EngineError::Process)?.push(serde_json::json!({"type":"mixed","tag":"subscription-in","listen":"127.0.0.1","listen_port":subscription_proxy.port,"users":[{"username":subscription_proxy.username,"password":subscription_proxy.password}]}));
+        let public_reservation = public.map(|p| p.add(&mut tun_config)).transpose()?;
         self.validate(Engine::Xray, &config).await?;
         let (telemetry, telemetry_reservation) = self.attach_telemetry(&mut tun_config).await?;
         let lease = NetworkLease::acquire()?;
@@ -460,6 +469,7 @@ impl EngineSet {
             }
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
+        drop(public_reservation);
         drop(proxy_reservation);
         drop(telemetry_reservation);
         let tun = self

@@ -45,6 +45,17 @@ pub enum Command {
         profile_id: Uuid,
         candidates: Vec<ProfileLink>,
     },
+    BeginConnection {
+        link: String,
+        policy: Box<moth_core::ConnectionSettings>,
+        profile_id: Uuid,
+        candidates: Vec<ProfileLink>,
+        mode: moth_core::ConnectionMode,
+        listener: Option<moth_core::PublicProxyOptions>,
+    },
+    ConnectionStatus {},
+    ProxyAccess {},
+    NativeRoute {},
     Disconnect {},
     TunnelStatus {},
     SubscriptionProxy {},
@@ -71,7 +82,8 @@ impl Drop for Command {
     fn drop(&mut self) {
         if let Self::Probe { link }
         | Self::Connect { link }
-        | Self::ConnectWithPolicy { link, .. } = self
+        | Self::ConnectWithPolicy { link, .. }
+        | Self::BeginConnection { link, .. } = self
         {
             use zeroize::Zeroize;
             link.zeroize();
@@ -101,11 +113,74 @@ pub enum Reply {
     Status(Health),
     Probe { latency_ms: u64 },
     Tunnel(TunnelState),
+    Connection(ConnectionState),
+    ProxyAccess(ProxyAccess),
+    NativeRoute(NativeRoute),
     SubscriptionProxy(DownloadProxy),
     ActiveProfile(Option<moth_core::ProfileSummary>),
     Guard(GuardState),
     Traffic(TrafficSnapshot),
     Failure { code: ErrorCode },
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ConnectionState {
+    pub phase: TunnelPhase,
+    pub owned_by_caller: bool,
+    pub error: Option<ErrorCode>,
+    pub mode: moth_core::ConnectionMode,
+}
+impl From<TunnelState> for ConnectionState {
+    fn from(state: TunnelState) -> Self {
+        Self {
+            phase: state.phase,
+            owned_by_caller: state.owned_by_caller,
+            error: state.error,
+            mode: moth_core::ConnectionMode::Tun,
+        }
+    }
+}
+impl ConnectionState {
+    pub fn tunnel_state(&self) -> TunnelState {
+        TunnelState {
+            phase: self.phase,
+            owned_by_caller: self.owned_by_caller,
+            error: self.error,
+        }
+    }
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProxyAccess {
+    pub address: std::net::IpAddr,
+    pub port: u16,
+    pub username: String,
+    pub password: String,
+}
+impl std::fmt::Debug for ProxyAccess {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("ProxyAccess([redacted])")
+    }
+}
+impl Drop for ProxyAccess {
+    fn drop(&mut self) {
+        use zeroize::Zeroize;
+        self.username.zeroize();
+        self.password.zeroize();
+    }
+}
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(
+    tag = "route",
+    content = "proxy",
+    rename_all = "camelCase",
+    deny_unknown_fields
+)]
+pub enum NativeRoute {
+    Direct,
+    PrivateProxy(DownloadProxy),
+    Blocked,
 }
 
 /// Ephemeral owner-only native-backend credentials. Never serialize to webview
@@ -171,6 +246,7 @@ pub struct EngineInfo {
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum ErrorCode {
+    PortUnavailable,
     VersionMismatch,
     InvalidRequest,
     InvalidProfile,

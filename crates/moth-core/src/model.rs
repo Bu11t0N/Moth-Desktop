@@ -137,6 +137,14 @@ impl Profile {
 #[serde(rename_all = "camelCase")]
 pub struct Library {
     #[serde(default)]
+    pub proxy_preferences: crate::ProxyPreferences,
+    #[serde(default)]
+    pub system_proxy_ownership: Option<String>,
+    #[serde(default)]
+    pub proxy_session_requested: bool,
+    #[serde(default)]
+    pub autostart_ownership: Option<String>,
+    #[serde(default)]
     pub traffic_history: crate::TrafficHistory,
     pub profiles: Vec<Profile>,
     pub selected: Option<Uuid>,
@@ -155,6 +163,10 @@ pub struct Library {
 impl Default for Library {
     fn default() -> Self {
         Self {
+            proxy_preferences: Default::default(),
+            system_proxy_ownership: None,
+            proxy_session_requested: false,
+            autostart_ownership: None,
             traffic_history: Default::default(),
             profiles: Vec::new(),
             selected: None,
@@ -201,6 +213,21 @@ impl Library {
         before != self.profiles.len()
     }
     pub fn validate(&self) -> Result<(), &'static str> {
+        self.proxy_preferences.validate()?;
+        if self
+            .system_proxy_ownership
+            .as_ref()
+            .is_some_and(|s| s.len() > 65536 || s.contains('\0'))
+        {
+            return Err("Некорректный журнал системного прокси");
+        }
+        if self
+            .autostart_ownership
+            .as_ref()
+            .is_some_and(|s| s.len() > 32768 || s.contains('\0'))
+        {
+            return Err("Некорректная запись автозапуска");
+        }
         self.traffic_history.validate()?;
         self.settings.validate()?;
         if self.device_id.is_nil() || self.subscriptions.len() > 100 {

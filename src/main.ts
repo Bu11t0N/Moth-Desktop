@@ -1,8 +1,10 @@
+import {proxyHtml,bindProxy} from "./proxy";
+import {autostartHtml,bindAutostart} from "./autostart";
 import {diagnosticsHtml,bindDiagnostics} from "./diagnostics";
 import {aboutHtml,bindAbout} from "./about";
 import {trafficHtml,bindTraffic} from "./traffic";
 import {guardHtml,guardBanner,bindGuard,refreshGuard,guardEnabled,guardVerified} from "./guard";
-import { applyPreferences, observeLocalization } from "./preferences";
+import { applyPreferences, observeLocalization, currentLanguage } from "./preferences";
 import { networkSettingsHtml, bindNetworkSettings } from "./settings";
 import { backupHtml, bindBackup } from "./backup";
 import { libraryHtml, bindLibrary } from "./library";
@@ -89,6 +91,9 @@ function render() {
     ? "Установите пакет Moth .deb. Перед обновлением отключите VPN и выйдите из приложения."
     : "Запустите установщик Moth. Для portable-пакета доступен Install-Service.cmd.";
   const selected = state.profiles.find((p) => p.id === state.selected);
+  const proxyMode = vpn.mode === "proxy";
+  const t=(ru:string,en:string)=>currentLanguage()==="en"?en:ru;
+  const proxyHeading = {disconnected:t("Прокси отключён","Proxy disconnected"),connecting:t("Подключение прокси…","Connecting proxy…"),connected:vpn.error?t("Проверка прокси не прошла","Proxy verification failed"):t("HTTP/SOCKS прокси подключён","HTTP/SOCKS proxy connected"),disconnecting:t("Отключение прокси…","Disconnecting proxy…"),failed:t("Соединение прокси прервано","Proxy connection interrupted")}[vpn.phase];
   const connected = vpn.phase === "connected" && serviceAvailable && !vpn.error;
   const active =
     vpn.phase === "connected" || vpn.phase === "connecting" || vpn.phase === "disconnecting" || (vpn.phase === "failed" && vpn.ownedByCaller);
@@ -131,8 +136,8 @@ function render() {
       <div class="page-heading"><div><p class="eyebrow">VPN</p><h1>Подключение VPN</h1><p class="muted">Выберите сервер и подключитесь к VPN.</p></div><button class="button subtle" data-import>${icon("plus")} Добавить сервер</button></div>
       <div class="overview"><article class="connection-card"><div class="card-top"><span class="status"><i></i> ${status}</span><span class="muted small">СИСТЕМНЫЙ ТУННЕЛЬ</span></div>
         <div class="moth-orbit"><div class="orbit-inner">${moth}</div></div>
-        <h2>${!serviceAvailable ? "Служба недоступна" : { disconnected: "VPN отключён", connecting: "Подключение VPN…", connected: vpn.error ? "Ошибка проверки VPN" : "VPN подключён", disconnecting: "Отключение VPN…", failed: vpn.ownedByCaller ? "Восстановление подключения…" : "Ошибка VPN" }[vpn.phase]}</h2><p class="card-description" role="status">${escapeHtml(vpnMessage)}</p>
-        <button class="connect" ${!native || !serviceAvailable || (vpnBusy && !canCancel) || (active && !vpn.ownedByCaller) || (!active && !selected) ? "disabled" : ""}>${canCancel ? "Отменить подключение" : vpnBusy ? "Выполняем…" : active ? "Отключить" : "Подключить"}</button><p class="protection-note">${icon("shield")} ${connected ? (guardVerified()?"Туннель проверен · kill switch включён":"Туннель проверен · kill switch не подтверждён") : "VPN сейчас не защищает трафик"}</p>
+        <h2>${!serviceAvailable ? "Служба недоступна" : proxyMode ? proxyHeading : { disconnected: "VPN отключён", connecting: "Подключение VPN…", connected: vpn.error ? "Ошибка проверки VPN" : "VPN подключён", disconnecting: "Отключение VPN…", failed: vpn.ownedByCaller ? "Восстановление подключения…" : "Ошибка VPN" }[vpn.phase]}</h2><p class="card-description" role="status">${escapeHtml(vpnMessage)}</p>
+        <button class="connect" ${!native || !serviceAvailable || (vpnBusy && !canCancel) || (active && !vpn.ownedByCaller) || (!active && !selected) ? "disabled" : ""}>${canCancel ? "Отменить подключение" : vpnBusy ? "Выполняем…" : active ? "Отключить" : "Подключить"}</button><p class="protection-note">${icon("shield")} ${connected && proxyMode ? t("Проверен HTTP/SOCKS канал · системный TUN не создан", "HTTP/SOCKS channel verified · no system TUN") : connected ? (guardVerified()?"Туннель проверен · kill switch включён":"Туннель проверен · kill switch не подтверждён") : "VPN сейчас не защищает трафик"}</p>
       </article><div class="right-column"><article class="selected-card"><div class="card-top"><h3>Выбранный сервер</h3><span class="tiny-label">01</span></div>
         ${selected ? `<div class="server-emblem">${icon("servers")}</div><h2 class="selected-name">${escapeHtml(selected.name)}</h2><p class="endpoint">${escapeHtml(selected.host)}:${selected.port}</p><div class="tags"><span>${escapeHtml(selected.protocol)}</span><span>${escapeHtml(selected.security)}</span></div>` : `<div class="server-emblem">${icon("servers")}</div><h2>Нет выбранного сервера</h2><p class="muted">Добавь ссылку от своего провайдера<br>или владельца сервера.</p>`}
         <button class="text-link" data-page="servers">${selected ? "Все серверы" : "Открыть список серверов"} ${icon("arrow")}</button></article>
@@ -145,7 +150,7 @@ function render() {
           : page === "diagnostics" ? `${diagnosticsHtml()}<article class="settings-card"><h2>Служба VPN</h2><div class="setting"><span>Системный VPN</span><strong>${state.capabilities.systemTunnel && serviceAvailable && serviceHealth?.protocol === 2 && serviceHealth.systemTunnel && serviceHealth.engines.length > 0 && serviceHealth.engines.every((e) => e.available) ? "Доступен через службу" : "Не подтверждён"}</strong></div><p class="muted" role="status" aria-label="Состояние службы">${escapeHtml(serviceMessage)}</p>${serviceHealth ? `<div class="setting"><span>Протокол управления</span><strong>${serviceHealth.protocol === 2 ? "Совместим · IPC 2" : "Несовместим"}</strong></div>${serviceHealth.engines.map((e) => `<div class="setting"><span>Ядро службы: ${escapeHtml(e.name)}</span><strong>${escapeHtml(e.version)} · ${e.available ? "Проверено" : "Недоступно"}</strong></div>`).join("")}` : ""}<button class="button subtle service-refresh" ${serviceChecking ? "disabled" : ""}>${serviceChecking ? "Проверяем…" : "Проверить связь со службой"}</button><p class="muted">Для VPN нужна служба Moth с протоколом IPC 2 (0.3.1–0.3.5). ${installationHint}</p></article>`
           : page === "about" ? aboutHtml(state)
           : `<div class="page-heading"><div><p class="eyebrow">ПАРАМЕТРЫ</p><h1>Настройки</h1><p class="muted">Соединение, защита и поведение приложения</p></div></div>
-      ${guardHtml()}${networkSettingsHtml(state)}${backupHtml()}`
+      ${autostartHtml()}${proxyHtml(state)}${guardHtml()}${networkSettingsHtml(state)}${backupHtml()}`
     }
     </section><footer><span>MOTH · OPEN SOURCE</span><button class="button subtle app-quit" ${native ? "" : "disabled"}>${guardEnabled()?"Выйти, сохранить блокировку":"Выйти"}</button></footer></main></div>
     <dialog id="import-dialog"><form id="import-form"><div class="dialog-heading"><div><p class="eyebrow">ИМПОРТ</p><h2>Добавить серверы</h2></div><button type="button" class="close" aria-label="Закрыть">×</button></div><label for="server-links">Ссылки серверов</label><textarea id="server-links" required rows="6" autocomplete="off" spellcheck="false" placeholder="vless://… или trojan://…"></textarea><p class="dialog-help">По одной ссылке на строку, Base64-список, Clash YAML или поддерживаемый JSON. Для URL провайдера используйте «Добавить подписку».</p><p id="import-error" class="dialog-error" role="alert"></p><div class="dialog-actions"><button type="button" class="button subtle close">Отмена</button><button class="button" type="submit">Импортировать</button></div></form></dialog>
@@ -156,6 +161,8 @@ function render() {
   bindTraffic(app);
   bindDiagnostics(app);
   bindAbout(app);
+  bindAutostart(app);
+  bindProxy(app,(next)=>{state=next;render();});
   bindBackup(app,(next)=>{state=next;render();});
   bindLibrary(app,state,(next)=>{state=next;render();},render,(e)=>{error=message(e);render();});
   const bulk=app.querySelector<HTMLButtonElement>("[data-probe-all]");
@@ -349,6 +356,13 @@ return call("get_snapshot")
 });
 
 function updateVpnMessage() {
+  if(vpn.mode==="proxy") {
+    const en=currentLanguage()==="en";
+    vpnMessage=vpn.phase==="connected"?(en?"Only configured applications use this proxy. Other traffic follows the OS network settings.":"Через прокси идут только настроенные на него приложения. Остальной трафик следует сетевым настройкам ОС."):
+      vpn.phase==="connecting"?(en?"Starting authenticated HTTP/SOCKS and checking access through it…":"Запускаем авторизованный HTTP/SOCKS и проверяем доступ через него…"):
+      vpn.phase==="failed"?(en?"Proxy channel interrupted. Native downloads remain blocked until reconnect or explicit disconnect.":"Канал прокси прерван. Загрузки Moth заблокированы до переподключения или явного отключения."):
+      (en?"Proxy is not connected.":"Прокси не подключён.");return;
+  }
   if(vpn.phase==="failed"&&vpn.ownedByCaller){vpnMessage="Служба восстанавливает подключение. Можно остановить восстановление кнопкой отключения.";return;}
   if(vpn.phase==="connected"&&vpn.error){vpnMessage="Туннель работает, но проверка HTTPS-доступа не прошла. Доступность VPN не подтверждена.";return;}
   vpnMessage = {
