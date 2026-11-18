@@ -2,6 +2,8 @@
 #[cfg(any(windows, target_os = "linux"))]
 pub mod guard;
 mod job;
+mod upstream;
+pub use upstream::profile_engine;
 #[cfg(any(windows, target_os = "linux"))]
 mod proxy;
 #[cfg(any(windows, target_os = "linux"))]
@@ -156,8 +158,10 @@ pub enum EngineError {
     PortUnavailable,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum Engine {
+    #[default]
     Xray,
     SingBox,
 }
@@ -395,11 +399,8 @@ impl EngineSet {
             port: 15491,
             credential: Uuid::new_v4(),
         };
-        self.validate(
-            Engine::Xray,
-            &moth_core::xray_bridge_config(profile, &bridge),
-        )
-        .await?;
+        let (engine, config) = upstream::config(profile, Some(&bridge))?;
+        self.validate(engine, &config).await?;
         self.validate(Engine::SingBox, &moth_core::sing_box_tun_config(&bridge))
             .await
     }
@@ -410,8 +411,7 @@ impl EngineSet {
             .await
     }
     async fn probe_url(&self, profile: &Profile, url: &str) -> Result<ProbeResult, EngineError> {
-        self.validate(Engine::Xray, &moth_core::xray_check_config(profile))
-            .await?;
+        let (engine, mut config) = upstream::config(profile, None)?;
         let listener =
             std::net::TcpListener::bind("127.0.0.1:0").map_err(|_| EngineError::Process)?;
         let port = listener
@@ -420,30 +420,25 @@ impl EngineSet {
             .port();
         drop(listener);
         let password = Uuid::new_v4().simple().to_string();
-        let mut config = moth_core::xray_check_config(profile);
         #[cfg(any(windows, target_os = "linux"))]
         if let Some(guard) = guard::load()? {
-            let address = guard
-                .address(&profile.host, profile.port)
-                .ok_or(EngineError::Network)?;
-            let key = if matches!(
-                profile.protocol,
-                moth_core::Protocol::Vless | moth_core::Protocol::Vmess
-            ) {
-                "vnext"
-            } else {
-                "servers"
-            };
-            config["outbounds"][0]["settings"][key][0]["address"] =
-                serde_json::json!(address.to_string());
-            #[cfg(target_os = "linux")]
-            {
-                config["outbounds"][0]["streamSettings"]["sockopt"]["mark"] =
-                    serde_json::json!(0x4d4f5448u32);
-            }
+            let address = guard.address_for(profile).ok_or(EngineError::Network)?;
+            upstream::pin(
+                &mut config,
+                engine,
+                profile,
+                address,
+                None,
+                cfg!(target_os = "linux"),
+            );
         }
-        config["inbounds"] = serde_json::json!([{"listen":"127.0.0.1","port":port,"protocol":"socks","settings":{"auth":"password","accounts":[{"user":"moth","pass":password}],"udp":false}}]);
-        let mut process = self.spawn_config(Engine::Xray, &config, false).await?;
+        config["inbounds"] = if engine == Engine::SingBox {
+            serde_json::json!([{"type":"socks","listen":"127.0.0.1","listen_port":port,"users":[{"username":"moth","password":password}]}])
+        } else {
+            serde_json::json!([{"listen":"127.0.0.1","port":port,"protocol":"socks","settings":{"auth":"password","accounts":[{"user":"moth","pass":password}],"udp":false}}])
+        };
+        self.validate(engine, &config).await?;
+        let mut process = self.spawn_config(engine, &config, false).await?;
         let start = Instant::now();
         let result = async {
             loop {

@@ -71,3 +71,29 @@ See STATUS.md for actual results; configured tests are not evidence of passing a
 ## GUI 0.3.2 tray
 
 The main-window close button hides to tray and preserves the running GUI and service connection. Tray Open/left-click or launching the shortcut restores the same instance. Tray Disconnect stops only the caller-owned tunnel. Exit blocks new Connect requests and confirms disconnection before ending the GUI; a pipe error retains the application unless SCM independently confirms the service is stopped/absent. The LocalSystem service itself stays installed/running for the next GUI launch. Existing 0.3.1 services support these IPC v2 commands without an upgrade.
+
+## 0.3.5 optional persistent block and proxy recovery
+
+Enable the block only after a verified owned connection. Direct routing, per-app
+splitting and LAN sharing are rejected while it is enabled. Disconnect and Exit
+stop the connection but retain the chosen block. Use Settings → Release Moth
+network block to restore ordinary networking. An unavailable service is not proof
+that filtering stopped.
+
+Administrator recovery on Windows: stop `MothDesktopService`, then run the
+installed `moth-service.exe --release-guard` from an elevated terminal. On Ubuntu:
+stop `moth-desktop.service`, then run
+`sudo /usr/lib/moth-desktop/moth-service --release-guard` and restart the service.
+Only Moth's provider/table is removed. Do not flush global firewall policy.
+Ubuntu early restoration runs before supported NetworkManager/systemd-networkd;
+after fixing a restoration failure, explicitly restart the affected manager.
+Unverified sudden power-loss/cold-boot cases are not a protection guarantee.
+
+HTTP/SOCKS passwords are shown only through an explicit owner request. The
+per-user OS proxy adapter keeps a private protected restoration journal. Normal
+Disconnect/Exit/update restores its changes. If settings were edited externally,
+Moth preserves them and retains an actionable recovery state. Check the OS proxy
+manually before acknowledging/forgetting that journal or uninstalling after a
+crash. Windows: Settings → Network & Internet → Proxy. GNOME: Settings → Network →
+Network Proxy. The privileged uninstaller never traverses user homes or decrypts
+another user's settings. An unavailable GUI cannot restore those settings itself.

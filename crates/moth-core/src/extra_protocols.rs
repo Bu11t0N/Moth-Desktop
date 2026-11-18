@@ -269,6 +269,7 @@ pub(crate) fn vmess(text: &str) -> Result<Profile, &'static str> {
         options: ProxyOptions {
             method,
             username: String::new(),
+            native: None,
         },
     })
 }

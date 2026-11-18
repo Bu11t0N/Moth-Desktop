@@ -3,7 +3,7 @@ import {autostartHtml,bindAutostart} from "./autostart";
 import {diagnosticsHtml,bindDiagnostics} from "./diagnostics";
 import {aboutHtml,bindAbout} from "./about";
 import {trafficHtml,bindTraffic} from "./traffic";
-import {guardHtml,guardBanner,bindGuard,refreshGuard,guardEnabled,guardVerified} from "./guard";
+import {guardHtml,guardBanner,bindGuard,refreshGuard,guardEnabled,guardVerified,guardKnownOff} from "./guard";
 import { applyPreferences, observeLocalization, currentLanguage } from "./preferences";
 import { networkSettingsHtml, bindNetworkSettings } from "./settings";
 import { backupHtml, bindBackup } from "./backup";
@@ -137,7 +137,7 @@ function render() {
       <div class="overview"><article class="connection-card"><div class="card-top"><span class="status"><i></i> ${status}</span><span class="muted small">СИСТЕМНЫЙ ТУННЕЛЬ</span></div>
         <div class="moth-orbit"><div class="orbit-inner">${moth}</div></div>
         <h2>${!serviceAvailable ? "Служба недоступна" : proxyMode ? proxyHeading : { disconnected: "VPN отключён", connecting: "Подключение VPN…", connected: vpn.error ? "Ошибка проверки VPN" : "VPN подключён", disconnecting: "Отключение VPN…", failed: vpn.ownedByCaller ? "Восстановление подключения…" : "Ошибка VPN" }[vpn.phase]}</h2><p class="card-description" role="status">${escapeHtml(vpnMessage)}</p>
-        <button class="connect" ${!native || !serviceAvailable || (vpnBusy && !canCancel) || (active && !vpn.ownedByCaller) || (!active && !selected) ? "disabled" : ""}>${canCancel ? "Отменить подключение" : vpnBusy ? "Выполняем…" : active ? "Отключить" : "Подключить"}</button><p class="protection-note">${icon("shield")} ${connected && proxyMode ? t("Проверен HTTP/SOCKS канал · системный TUN не создан", "HTTP/SOCKS channel verified · no system TUN") : connected ? (guardVerified()?"Туннель проверен · kill switch включён":"Туннель проверен · kill switch не подтверждён") : "VPN сейчас не защищает трафик"}</p>
+        <button class="connect" ${!native || !serviceAvailable || (vpnBusy && !canCancel) || (active && !vpn.ownedByCaller) || (!active && !selected) ? "disabled" : ""}>${canCancel ? "Отменить подключение" : vpnBusy ? "Выполняем…" : active ? "Отключить" : "Подключить"}</button><p class="protection-note">${icon("shield")} ${connected && proxyMode ? t("Проверен HTTP/SOCKS канал · системный TUN не создан", "HTTP/SOCKS channel verified · no system TUN") : connected ? (guardVerified()?"Туннель проверен · kill switch включён":guardKnownOff()?"Туннель проверен · kill switch выключен":"Туннель проверен · kill switch не подтверждён") : "VPN сейчас не защищает трафик"}</p>
       </article><div class="right-column"><article class="selected-card"><div class="card-top"><h3>Выбранный сервер</h3><span class="tiny-label">01</span></div>
         ${selected ? `<div class="server-emblem">${icon("servers")}</div><h2 class="selected-name">${escapeHtml(selected.name)}</h2><p class="endpoint">${escapeHtml(selected.host)}:${selected.port}</p><div class="tags"><span>${escapeHtml(selected.protocol)}</span><span>${escapeHtml(selected.security)}</span></div>` : `<div class="server-emblem">${icon("servers")}</div><h2>Нет выбранного сервера</h2><p class="muted">Добавь ссылку от своего провайдера<br>или владельца сервера.</p>`}
         <button class="text-link" data-page="servers">${selected ? "Все серверы" : "Открыть список серверов"} ${icon("arrow")}</button></article>
@@ -356,6 +356,7 @@ return call("get_snapshot")
 });
 
 function updateVpnMessage() {
+  if(vpn.error==="portUnavailable"){vpnMessage=currentLanguage()==="en"?"The proxy address is unavailable or its port is occupied. Change the address/port and reconnect.":"Адрес прокси недоступен или порт занят. Измените адрес/порт и подключитесь заново.";return;}
   if(vpn.mode==="proxy") {
     const en=currentLanguage()==="en";
     vpnMessage=vpn.phase==="connected"?(en?"Only configured applications use this proxy. Other traffic follows the OS network settings.":"Через прокси идут только настроенные на него приложения. Остальной трафик следует сетевым настройкам ОС."):

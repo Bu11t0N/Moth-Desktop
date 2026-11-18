@@ -19,6 +19,11 @@ fn engines() -> EngineSet {
 fn fixture_links() -> Vec<String> {
     let base = "vless://c6b3a07a-8bf9-4a18-905b-ea41642633c3@example.com:443";
     let mut links = vec![];
+    links.extend([
+        "hy2://synthetic@example.com:443?sni=example.com&obfs=salamander&obfs-password=synthetic-obfs",
+        "tuic://00000000-0000-4000-8000-000000000001:synthetic@example.com:443?congestion_control=bbr&udp_relay_mode=quic&alpn=h3",
+        "anytls://synthetic@example.com:443?sni=example.com&fp=chrome",
+    ].into_iter().map(str::to_owned));
     let additional = r#"{"outbounds":[{"type":"vmess","tag":"VMess","server":"example.com","server_port":443,"uuid":"00000000-0000-4000-8000-000000000001","tls":{"enabled":true}},{"type":"shadowsocks","tag":"SS","server":"example.com","server_port":443,"method":"aes-256-gcm","password":"synthetic"},{"type":"socks","tag":"SOCKS","server":"example.com","server_port":1080,"username":"synthetic","password":"synthetic"},{"type":"http","tag":"HTTP","server":"example.com","server_port":8080,"username":"synthetic","password":"synthetic"}]}"#;
     for profile in moth_core::import_links(additional).unwrap() {
         links.push(moth_core::share_link(&profile).unwrap());
@@ -254,4 +259,72 @@ fn missing_or_modified_engines_never_launch() {
         set.verified_path(Engine::Xray),
         Err(EngineError::Integrity)
     ));
+}
+
+#[tokio::test]
+#[ignore = "requires pinned engines; loopback only, no OS network changes"]
+async fn native_families_use_verified_tls_and_authenticated_real_roundtrips() {
+    let certificate = include_str!("../tests/fixtures/public-test-only.pem");
+    let private_key = include_str!("../tests/fixtures/public-test-only.key");
+    let fixture = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let target = fixture.local_addr().unwrap();
+    let endpoint = tokio::spawn(async move {
+        loop {
+            let (mut stream, _) = fixture.accept().await.unwrap();
+            tokio::spawn(async move {
+                let mut bytes = [0u8; 4096];
+                let _ = stream.read(&mut bytes).await;
+                let _=stream.write_all(b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await;
+            });
+        }
+    });
+    for (kind,link) in [
+        ("hysteria2","hy2://synthetic@127.0.0.1:443?sni=protocol.fixture.moth.invalid&obfs=salamander&obfs-password=fixture-obfs"),
+        ("tuic","tuic://00000000-0000-4000-8000-000000000001:synthetic@127.0.0.1:443?sni=protocol.fixture.moth.invalid&alpn=h3&congestion_control=cubic&udp_relay_mode=native"),
+        ("anytls","anytls://synthetic@127.0.0.1:443?sni=protocol.fixture.moth.invalid"),
+    ] {
+        let reservation=std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port=reservation.local_addr().unwrap().port();
+        // QUIC protocols also need the UDP port. Keep both reserved until spawn.
+        let udp=std::net::UdpSocket::bind((std::net::Ipv4Addr::LOCALHOST,port)).unwrap();
+        let mut inbound=serde_json::json!({"type":kind,"listen":"127.0.0.1","listen_port":port,"users":[{"name":"fixture","password":"synthetic"}],"tls":{"enabled":true,"certificate":[certificate],"key":[private_key]}});
+        if kind=="hysteria2"{inbound["obfs"]=serde_json::json!({"type":"salamander","password":"fixture-obfs"});}
+        if kind=="tuic"{inbound["users"][0]["uuid"]=serde_json::json!("00000000-0000-4000-8000-000000000001");inbound["tls"]["alpn"]=serde_json::json!(["h3"]);}
+        let server=serde_json::json!({"log":{"disabled":true},"inbounds":[inbound],"outbounds":[{"type":"direct","tag":"direct"}],"route":{"final":"direct"}});
+        engines().validate(Engine::SingBox,&server).await.unwrap();drop(reservation);drop(udp);
+        let mut server=engines().spawn_config(Engine::SingBox,&server,false).await.unwrap();
+        let mut profile=moth_core::import_links(link).unwrap().remove(0);profile.port=port;
+        for (valid_password,valid_name) in [(true,true),(false,true),(true,false)] {
+            let mut profile=profile.clone();
+            if !valid_password{profile.credential="wrong-password".into();}
+            if !valid_name{if let moth_core::Tls::Tls{server_name,..}=&mut profile.tls{*server_name="wrong-name.moth.invalid".into();}}
+            let reserved=std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let client_port=reserved.local_addr().unwrap().port();
+            let (engine,mut config)=super::upstream::config(&profile,None).unwrap();
+            assert_eq!(engine,Engine::SingBox);
+            config["outbounds"][0]["tls"]["certificate"]=serde_json::json!([certificate]);
+            config["inbounds"]=serde_json::json!([{"type":"socks","listen":"127.0.0.1","listen_port":client_port,"users":[{"username":"fixture","password":"local-fixture"}]}]);
+            engines().validate(engine,&config).await.unwrap();drop(reserved);
+            let mut client_process=engines().spawn_config(engine,&config,false).await.unwrap();
+            let client=reqwest::Client::builder().no_proxy().proxy(reqwest::Proxy::all(format!("socks5h://fixture:local-fixture@127.0.0.1:{client_port}")).unwrap()).timeout(Duration::from_secs(3)).build().unwrap();
+            let started=Instant::now();
+            loop {
+                assert!(client_process.child.try_wait().unwrap().is_none(),"fixture client exited");
+                assert!(server.child.try_wait().unwrap().is_none(),"fixture server exited");
+                if tokio::net::TcpStream::connect((std::net::Ipv4Addr::LOCALHOST,client_port)).await.is_ok(){break;}
+                assert!(started.elapsed()<Duration::from_secs(3),"fixture client did not listen");
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+            let mut success=false;
+            for _ in 0..3 {
+                if client.get(format!("http://{target}/fixture")).send().await.is_ok_and(|r|r.status()==204){success=true;break;}
+                if !valid_password||!valid_name{break;}
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            client_process.stop().await.unwrap();
+            assert_eq!(success,valid_password&&valid_name,"{kind}: password={valid_password}, certificate name={valid_name}");
+        }
+        server.stop().await.unwrap();
+    }
+    endpoint.abort();
 }

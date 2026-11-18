@@ -221,8 +221,18 @@ pub(super) fn restore(before: &Config, installed: &Config) -> Result<(), &'stati
     if before.values.len() != KEYS.len() || installed.values.len() != KEYS.len() {
         return Err(FAILED);
     }
-    // Also handles a crash partway through applying the settings. Each key is
-    // restored only while it still equals the value assigned by Moth.
+    // A partial application is recoverable only when every value is one of
+    // the recorded before/after values. A foreign edit preserves the complete
+    // proxy configuration, rather than mixing its server with our old mode.
+    let current = read()?;
+    if current
+        .values
+        .iter()
+        .enumerate()
+        .any(|(i, value)| value != &before.values[i] && value != &installed.values[i])
+    {
+        return Err("Прокси изменён вне Moth; изменения сохранены. Проверьте параметры ОС и журнал восстановления");
+    }
     for i in (0..KEYS.len()).rev() {
         let setting = Setting::open(i)?;
         if before.values[i] != installed.values[i] && setting.read()? == installed.values[i] {
@@ -231,6 +241,9 @@ pub(super) fn restore(before: &Config, installed: &Config) -> Result<(), &'stati
     }
     unsafe {
         g_settings_sync();
+    }
+    if read()? != *before {
+        return Err(FAILED);
     }
     Ok(())
 }

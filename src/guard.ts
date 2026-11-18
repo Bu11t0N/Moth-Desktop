@@ -7,6 +7,7 @@ let verified=false;
 const t=(ru:string,en:string)=>currentLanguage()==="en"?en:ru;
 export const guardEnabled=()=>state?.enabled===true;
 export const guardVerified=()=>verified&&state?.filtering===true;
+export const guardKnownOff=()=>verified&&state?.enabled===false;
 const summary=()=>!verified?t("Состояние kill switch не подтверждено. Блокировка может сохраняться.","Kill switch status is unverified. A network block may remain."):
   state?.enabled?(state.filtering?t("Kill switch включён. Disconnect и Exit сохраняют блокировку.","Kill switch is on. Disconnect and Exit keep the network blocked."):t("Kill switch выбран, но правила ОС не подтверждены. Защита не гарантирована.","Kill switch is selected but OS rules are unverified. Protection is not guaranteed.")):
   t("Kill switch выключен. При сбое туннеля обычная сеть может восстановиться.","Kill switch is off. Normal networking can return after tunnel failure.");

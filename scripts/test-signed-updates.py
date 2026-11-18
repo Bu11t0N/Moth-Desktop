@@ -73,10 +73,10 @@ def main():
             mode=(directory/'mode').read_text().strip() if (directory/'mode').exists() else 'success'
             variant='fault' if mode=='rollback' else 'candidate'
             artifact=directory/variant
-            prefix='/releases/download/v0.3.4/'
+            prefix='/releases/download/v0.3.5/'
             if self.path.startswith('/releases?') or self.path=='/releases':
-                assets=[{'name':name,'browser_download_url':base+'/v0.3.4/'+name} for name in ('moth-update.json','moth-update.json.sig')]
-                data=json.dumps([{'tag_name':'v0.3.4','draft':False,'assets':assets}]).encode()
+                assets=[{'name':name,'browser_download_url':base+'/v0.3.5/'+name} for name in ('moth-update.json','moth-update.json.sig')]
+                data=json.dumps([{'tag_name':'v0.3.5','draft':False,'assets':assets}]).encode()
             elif self.path.startswith(prefix):
                 name=self.path[len(prefix):]
                 if name not in ('moth-update.json','moth-update.json.sig',package_name):
@@ -101,7 +101,7 @@ def main():
     code=source/'crates/moth-update/src/lib.rs'
     text=code.read_text(encoding='utf-8').replace('https://api.github.com/repos/Bu11t0N/Moth-Desktop/releases?per_page=20',f'https://localhost:{server.server_port}/releases?per_page=20').replace('https://github.com/Bu11t0N/Moth-Desktop/releases/download',base)
     code.write_text(text,encoding='utf-8')
-    package_name='Moth-0.3.4-'+('windows-x64-setup.exe' if windows else 'linux-x64.deb')
+    package_name='Moth-0.3.5-'+('windows-x64-setup.exe' if windows else 'linux-x64.deb')
     threading.Thread(target=server.serve_forever,daemon=True).start()
     environment['MOTH_PROVIDER_BASE']=f'https://localhost:{server.server_port}/provider'
     (directory/'provider-base').write_text(environment['MOTH_PROVIDER_BASE'],encoding='utf-8')
@@ -112,10 +112,10 @@ def main():
         linux=source/'src-tauri/tauri.linux.conf.json'
         linux.write_text(linux.read_text().replace('../target/release/','../target/debug/'))
     try:
-        for version,variant in [('0.3.3','baseline'),('0.3.4','candidate')]:
+        for version,variant in [('0.3.4','baseline'),('0.3.5','candidate')]:
             for name,original in configurations.items():
-                (source/name).write_text(original.replace('0.3.4',version),encoding='utf-8')
-            lock=re.sub(r'(\[\[package\]\]\nname = "moth-[^"]+"\nversion = ")0\.3\.4(")',lambda match:match[1]+version+match[2],original_lock)
+                (source/name).write_text(original.replace('0.3.5',version),encoding='utf-8')
+            lock=re.sub(r'(\[\[package\]\]\nname = "moth-[^"]+"\nversion = ")0\.3\.5(")',lambda match:match[1]+version+match[2],original_lock)
             (source/'Cargo.lock').write_text(lock)
             run('cargo','build','-p','moth-service','-p','moth-maintenance','--locked',cwd=source)
             arguments=['desktop:build','--','--debug']+(['--no-bundle'] if windows else ['--bundles','deb'])
@@ -135,7 +135,7 @@ def main():
             script=source/'scripts/Service.ps1'
             marker="$fixtureMarker=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'Moth Desktop/acceptance-poststart-fixture'; [IO.File]::Open($fixtureMarker,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None).Dispose(); if ($true)"
             script.write_text(script.read_text(encoding='utf-8').replace('if ($health.version -ne $expectedVersion)',marker),encoding='utf-8')
-            run('pwsh','-NoProfile','-File',str(source/'scripts/build-installer-windows.ps1'),'-PackageDirectory',str(directory/'candidate/portable/Moth-0.3.4-windows-x64'),'-OutputDirectory',str(fault),cwd=source)
+            run('pwsh','-NoProfile','-File',str(source/'scripts/build-installer-windows.ps1'),'-PackageDirectory',str(directory/'candidate/portable/Moth-0.3.5-windows-x64'),'-OutputDirectory',str(fault),cwd=source)
         else:
             package=directory/'candidate'/package_name
             unpacked=fault/'unpacked'

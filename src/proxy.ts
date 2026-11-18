@@ -16,7 +16,7 @@ export function proxyHtml(state:Snapshot):string {
   <label>${t("Разрешённые клиенты LAN (IP/CIDR, по одному в строке)","Allowed LAN clients (IP/CIDR, one per line)")}<textarea name="clients" rows="3" maxlength="1040" spellcheck="false">${escape(p.listener.allowedClients.join("\n"))}</textarea></label>
   <p class="muted">${t("По умолчанию 127.0.0.1. LAN требует точного частного адреса этого компьютера и списка клиентов; 0.0.0.0 и :: запрещены. Авторизация обязательна, пароль меняется при новом ручном подключении. LAN несовместим с kill switch. HTTP/SOCKS до этого компьютера не шифрует пароль: используйте только доверенную локальную сеть. Moth не открывает порты в других брандмауэрах.","The default is 127.0.0.1. LAN requires this computer's specific private address and a client allowlist; 0.0.0.0 and :: are rejected. Authentication is mandatory; a new manual session changes the password. LAN is incompatible with kill switch. The HTTP/SOCKS leg to this computer does not encrypt the password: use a trusted local network. Moth does not open ports in other firewalls.")}</p>
   <button class="button" ${!native?"disabled":""}>${t("Сохранить режим","Save mode")}</button><p data-proxy-message role="status"></p></form>
-  <div class="actions"><button type="button" class="button subtle" data-proxy-access>${t("Показать данные доступа…","Show access details…")}</button><button type="button" class="button subtle" data-proxy-restore>${t("Отключить и восстановить системный прокси","Disconnect and restore OS proxy")}</button></div><p data-system-proxy-status role="status"></p>
+  <div class="actions"><button type="button" class="button subtle" data-proxy-access>${t("Показать данные доступа…","Show access details…")}</button><button type="button" class="button subtle" data-proxy-restore>${t("Отключить и восстановить системный прокси","Disconnect and restore OS proxy")}</button></div><p data-system-proxy-status role="status"></p><button class="button subtle" data-proxy-ack hidden>${t("Я проверил параметры ОС; забыть старый журнал…","I checked the OS settings; forget old journal…")}</button>
   <p class="muted">${t("Disconnect, Exit и установка обновления восстанавливают только собственные изменения. После аварийного выхода откройте Moth и используйте восстановление. Если приложение недоступно: Windows → Параметры → Сеть и Интернет → Прокси; GNOME → Настройки → Сеть → Сетевой прокси. Проверьте прежние параметры вручную перед удалением приложения. Настройки режима и журнал восстановления не переносятся в backup.","Disconnect, Exit and update installation restore owned settings. After a crash, reopen Moth and use restore. If the app is unavailable: Windows → Settings → Network & Internet → Proxy; GNOME → Settings → Network → Network Proxy. Check your original settings before removing the app. Mode settings and recovery journals are not transferred by backups.")}</p></article>`;
 }
 export function bindProxy(root:HTMLElement,changed:(s:Snapshot)=>void):void {
@@ -24,6 +24,7 @@ export function bindProxy(root:HTMLElement,changed:(s:Snapshot)=>void):void {
   const message=root.querySelector("[data-proxy-message]")!;
   const status=root.querySelector("[data-system-proxy-status]")!;
   const refresh=async()=>{try{if(!native)throw new Error();const s=await invoke<{supported:boolean;recoveryPending:boolean;owned:boolean}>("system_proxy_status");
+    root.querySelector<HTMLButtonElement>("[data-proxy-ack]")!.hidden=!s.recoveryPending||s.owned;
     status.textContent=s.recoveryPending?(s.owned?t("Собственный системный прокси установлен; доступно восстановление","Moth OS proxy is set; restoration is available"):t("Есть журнал восстановления; внешние изменения будут сохранены","A recovery journal exists; external edits will be preserved")):t("Журнал собственных изменений отсутствует","No owned OS proxy changes are recorded");
   }catch{status.textContent=t("Системный прокси в этой среде недоступен или не подтверждён","OS proxy is unavailable or unverified in this environment");}};
   form.onsubmit=async(event)=>{event.preventDefault();const data=new FormData(form);
@@ -34,6 +35,10 @@ export function bindProxy(root:HTMLElement,changed:(s:Snapshot)=>void):void {
   };
   root.querySelector<HTMLButtonElement>("[data-proxy-restore]")!.onclick=async()=>{
     try{changed(await invoke<Snapshot>("restore_system_proxy"));}catch(e){status.textContent=currentLanguage()==="en"?"Restoration could not be confirmed. Check the OS proxy settings; the recovery journal is retained.":String(e);}
+  };
+  root.querySelector<HTMLButtonElement>("[data-proxy-ack]")!.onclick=async()=>{
+    if(!confirm(t("Подтвердите, что вы вручную проверили текущие параметры прокси ОС. Moth отключит своё соединение и забудет прежний журнал, сохранив текущие параметры ОС.","Confirm you manually checked the current OS proxy settings. Moth will stop its connection and forget the old recovery journal while preserving the current OS settings.")))return;
+    try{changed(await invoke<Snapshot>("acknowledge_proxy_recovery"));}catch{status.textContent=t("Не удалось подтвердить восстановление; журнал сохранён","Recovery could not be acknowledged; the journal is retained");}
   };
   root.querySelector<HTMLButtonElement>("[data-proxy-access]")!.onclick=async()=>{
     try{

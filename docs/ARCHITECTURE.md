@@ -122,3 +122,24 @@ does not by itself implement a Linux daemon or TUN.
 
 References: [Tokio Unix peer credentials](https://docs.rs/tokio/latest/tokio/net/unix/struct.UCred.html),
 [Secret Service blocking boundary](https://docs.rs/secret-service/5.2.0/secret_service/blocking/index.html).
+
+## ADR-011: 0.3.5 owned network policy and observable modes
+
+Persistent guard intent is root-protected, bounded and contains only owner and
+cached numeric upstream endpoints/selected engine kinds. WFP provider/sublayer
+and nftables table are fixed and owned; engine/session teardown does not release
+them. Startup restores intent, but UI protection requires a live OS rule check.
+Direct/per-app bypass and LAN listeners conflict with the guard.
+
+New typed IPC commands distinguish TUN from proxy-only sessions without changing
+legacy IPC v2 states. A legacy client sees an unsupported failed state for active
+proxy mode, never a connected system VPN. Public mixed listeners authenticate;
+LAN adds explicit bind/source restrictions. Native download routes use a separate
+authenticated force-proxy listener, with protected user intent preventing direct
+fallback across a proxy-only service restart. OS proxy recovery and login entries
+belong to the ordinary user and preserve foreign modifications.
+
+The secret-authenticated loopback Clash API is read only through native sampling.
+Bounded summaries expose actual counters and connection fields; no API bearer,
+raw config or raw logs enter webview snapshots. History is optional and bounded;
+diagnostic event entry points accept only fixed typed codes. Export is previewed.

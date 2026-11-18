@@ -35,6 +35,10 @@ try {
     $health = Get-Content -LiteralPath $userOut -Raw | ConvertFrom-Json
     if ($health.protocol -ne 2 -or -not $health.systemTunnel) { throw 'Unexpected non-administrator health response' }
     Write-Output 'Non-administrator service authentication passed.'
+    $settingsExample=Join-Path $repo 'target/debug/examples/desktop_settings_acceptance.exe'
+    $settingsCheck=Start-Process -FilePath $settingsExample -Credential $credential -LoadUserProfile -WorkingDirectory $env:SystemRoot -WindowStyle Hidden -Wait -PassThru
+    if($settingsCheck.ExitCode -ne 0){throw 'Ordinary-user login startup / OS proxy acceptance failed'}
+    $settingsCheck.Dispose()
     & (Join-Path $PSScriptRoot 'test-service-tunnel.ps1') -Credential $credential -DisposableVm:$DisposableVm
 } finally {
     if ($createdUser) { Remove-LocalUser -Name $testUser }

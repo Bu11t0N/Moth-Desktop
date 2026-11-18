@@ -5,6 +5,8 @@ mod proxy;
 pub use history::*;
 pub use proxy::*;
 mod extra_protocols;
+mod native_protocols;
+pub use native_protocols::{sing_box_native_config, NativeProtocolOptions};
 mod formats;
 mod import;
 mod model;

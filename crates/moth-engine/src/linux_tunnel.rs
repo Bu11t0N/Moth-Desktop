@@ -419,19 +419,15 @@ impl EngineSet {
             username: Uuid::new_v4().to_string(),
             password: Uuid::new_v4().to_string(),
         };
-        let mut config = moth_core::xray_bridge_config(profile, &bridge);
-        let outbound = &mut config["outbounds"][0];
-        let key = if matches!(
-            profile.protocol,
-            moth_core::Protocol::Vless | moth_core::Protocol::Vmess
-        ) {
-            "vnext"
-        } else {
-            "servers"
-        };
-        outbound["settings"][key][0]["address"] = serde_json::json!(address.ip().to_string());
-        outbound["streamSettings"]["sockopt"] =
-            serde_json::json!({"interface":interface,"mark":MARK});
+        let (upstream_engine, mut config) = crate::upstream::config(profile, Some(&bridge))?;
+        crate::upstream::pin(
+            &mut config,
+            upstream_engine,
+            profile,
+            address.ip(),
+            Some(&interface),
+            cfg!(target_os = "linux"),
+        );
         let mut tun_config = moth_core::sing_box_tun_policy(&bridge, policy)
             .map_err(|_| EngineError::InvalidConfig)?;
         tun_config["outbounds"][1]["bind_interface"] = serde_json::json!(interface);
@@ -443,11 +439,11 @@ impl EngineSet {
         tun_config["inbounds"][0]["iproute2_table_index"] = serde_json::json!(20220);
         tun_config["inbounds"].as_array_mut().ok_or(EngineError::Process)?.push(serde_json::json!({"type":"mixed","tag":"subscription-in","listen":"127.0.0.1","listen_port":subscription_proxy.port,"users":[{"username":subscription_proxy.username,"password":subscription_proxy.password}]}));
         let public_reservation = public.map(|p| p.add(&mut tun_config)).transpose()?;
-        self.validate(Engine::Xray, &config).await?;
+        self.validate(upstream_engine, &config).await?;
         let (telemetry, telemetry_reservation) = self.attach_telemetry(&mut tun_config).await?;
         let lease = NetworkLease::acquire()?;
         drop(reservation);
-        let mut upstream = self.spawn_config(Engine::Xray, &config, false).await?;
+        let mut upstream = self.spawn_config(upstream_engine, &config, false).await?;
         let start = Instant::now();
         loop {
             if upstream

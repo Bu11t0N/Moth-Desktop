@@ -5,6 +5,7 @@ param(
     [Parameter(Mandatory)][string]$Baseline031Directory,
     [Parameter(Mandatory)][string]$Baseline032Directory,
     [Parameter(Mandatory)][string]$Baseline033Directory,
+    [Parameter(Mandatory)][string]$Baseline034Directory,
     [string]$MakeNsis="${env:ProgramFiles(x86)}\NSIS\makensis.exe",
     [switch]$DisposableVm
 )
@@ -55,8 +56,8 @@ function Run-Installer([string]$Path,[bool]$Success=$true) {
 }
 function Check-Installed {
     $health=(& (Join-Path $root 'moth-service.exe') --status) | ConvertFrom-Json
-    if ($LASTEXITCODE -ne 0 -or $health.version -ne '0.3.4' -or -not $health.systemTunnel) { throw 'Installed service health failed.' }
-    if ((Get-ItemProperty -LiteralPath $registry).DisplayVersion -ne '0.3.4') { throw 'Uninstall registration missing.' }
+    if ($LASTEXITCODE -ne 0 -or $health.version -ne '0.3.5' -or -not $health.systemTunnel) { throw 'Installed service health failed.' }
+    if ((Get-ItemProperty -LiteralPath $registry).DisplayVersion -ne '0.3.5') { throw 'Uninstall registration missing.' }
     foreach ($name in @('moth-desktop.exe','Uninstall.exe','installed-files.json')) { if (-not (Test-Path -LiteralPath (Join-Path $root $name))) { throw 'Installed payload missing.' } }
     $shell=New-Object -ComObject WScript.Shell
     foreach ($directory in @([Environment]::GetFolderPath('CommonPrograms'),[Environment]::GetFolderPath('CommonDesktopDirectory'))) {
@@ -88,13 +89,13 @@ $needle='if ($health.version -ne $expectedVersion)'
 if (-not $source.Contains($needle)) { throw 'Rollback injection point missing.' }
 $source.Replace($needle,'if ($true)') | Set-Content -LiteralPath $faultScript -Encoding utf8BOM
 & (Join-Path $faultRepo 'scripts/build-installer-windows.ps1') -PackageDirectory $package -OutputDirectory (Join-Path $work 'fault-artifact') -MakeNsis $MakeNsis
-$faultInstaller=Join-Path $work 'fault-artifact/Moth-0.3.4-windows-x64-setup.exe'
+$faultInstaller=Join-Path $work 'fault-artifact/Moth-0.3.5-windows-x64-setup.exe'
 # Failed clean installation must unregister the newly created service and restore absence.
 Run-Installer $faultInstaller $false
 if ((Get-Service MothDesktopService -ErrorAction SilentlyContinue) -or (Test-Path -LiteralPath $root) -or (Test-Path -LiteralPath $registry)) { throw 'Failed clean installation did not restore absence.' }
 Run-Installer $installerPath
 Check-Installed
-$updater=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'Moth Desktop/maintenance/0.3.4/moth-maintenance.exe'
+$updater=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'Moth Desktop/maintenance/0.3.5/moth-maintenance.exe'
 python (Join-Path $PSScriptRoot 'test-update-rejection.py') $updater (Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'Moth Desktop')
 if ($LASTEXITCODE -ne 0) { throw 'Installed privileged updater unsigned-input refusal failed.' }
 Check-Installed
@@ -112,7 +113,7 @@ Run-Installer $installerPath
 Check-Installed
 Uninstall
 if (Test-Path -LiteralPath $root) { throw 'Clean uninstall left unchanged application files.' }
-foreach ($baseline in @($Baseline031Directory,$Baseline032Directory,$Baseline033Directory)) {
+foreach ($baseline in @($Baseline031Directory,$Baseline032Directory,$Baseline033Directory,$Baseline034Directory)) {
     & (Join-Path $baseline 'Service.ps1') -Action Install -PackageDirectory $baseline
     Run-Installer $installerPath
     Check-Installed

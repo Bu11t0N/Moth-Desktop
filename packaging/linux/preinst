@@ -36,10 +36,12 @@ PY
       # Execute only the previous root-owned fixed installation, and require an
       # authenticated status response before stopping/unpacking anything.
       /usr/lib/moth-desktop/moth-service --check-installed
-      /usr/lib/moth-desktop/moth-service --tunnel-status | python3 -c '
+      control=--tunnel-status
+      if dpkg --compare-versions "$(/usr/lib/moth-desktop/moth-service --version)" ge 0.3.5; then control=--connection-status; fi
+      /usr/lib/moth-desktop/moth-service "$control" | python3 -c '
 import json,sys
 state=json.load(sys.stdin)
-if state.get("kind") != "tunnel" or state.get("phase") not in ("disconnected","failed"):
+if state.get("kind") not in ("tunnel","connection") or state.get("phase") not in ("disconnected","failed"):
     raise SystemExit("Disconnect VPN before upgrading Moth Desktop, including connections owned by other users.")
 '
       systemctl stop moth-desktop.service

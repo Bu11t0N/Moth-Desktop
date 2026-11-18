@@ -1,4 +1,28 @@
-# Desktop engines — 0.3.1
+# Desktop engines — 0.3.5
+
+The exact upstream pins below are unchanged. The service selects Xray for the
+existing six profile families and sing-box for Hysteria2/salamander, TUIC v5 and
+AnyTLS. Both use a credential-authenticated loopback VLESS bridge from the TUN
+or mixed listener. Numeric upstream pinning preserves TLS SNI and transport host;
+Windows guard exceptions also identify the selected installed executable and
+LocalSystem token. No custom protocol/cryptographic implementation is added.
+
+New families support typed URI and strict sing-box JSON/Clash server subsets.
+Port hopping, arbitrary raw engine options, WireGuard/AmneziaWG/SSH/ShadowTLS and
+full Clash/Mihomo policy documents are not supported. Import rejects incompatible
+options. Local pinned-engine checks and real loopback TLS/password/name tests
+cover all three new families; this is not paid-provider interoperability evidence.
+
+The optional mixed HTTP/SOCKS listener always authenticates. LAN binds an explicit
+private interface address and requires source-IP allowlists; the controller and
+private native download channel remain on loopback with separate secrets.
+Proxy-only mode creates no TUN and never reports system-wide VPN protection.
+Engine counters describe routed application traffic, not billing/wire totals.
+
+The optional persistent guard is separate from engine teardown; without it the
+historical fail-open behavior below remains. See STATUS.md for native acceptance.
+
+## Earlier engine foundation
 
 ## Pinned upstream binaries and corresponding sources
 

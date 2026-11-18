@@ -102,6 +102,21 @@ pub async fn restore_system_proxy(app: tauri::AppHandle) -> Result<Snapshot, Str
     crate::disconnect_vpn(app.clone()).await?;
     crate::get_snapshot(app.state())
 }
+#[tauri::command]
+pub async fn acknowledge_proxy_recovery(app: tauri::AppHandle) -> Result<Snapshot, String> {
+    crate::tray::stop_owned().await.map_err(|e| e.to_string())?;
+    let lifecycle = app.state::<crate::tray::DesktopLifecycle>();
+    let _controls = lifecycle.controls.write().await;
+    crate::tray::stop_owned().await.map_err(|e| e.to_string())?;
+    let handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move||{
+        let state=handle.state::<AppState>();
+        let _gate=state.system_proxy_gate.lock().map_err(|_|"Действие недоступно")?;
+        let owned={let library=state.library.lock().map_err(|_|"Хранилище недоступно")?;moth_platform::system_proxy::status(library.system_proxy_ownership.as_deref()).map_err(str::to_owned)?.owned};
+        if owned{return Err("Собственный прокси ещё установлен; сначала восстановите его или измените параметры ОС вручную".into());}
+        mutate(&state,|l|{l.system_proxy_ownership=None;l.proxy_session_requested=false;Ok(())})
+    }).await.map_err(|_|"Подтверждение восстановления прервано")?
+}
 /// Native downloads ignore environment/OS proxies. An explicit service route
 /// prevents silently leaking them after proxy-only crashes or service restarts.
 pub async fn native_route(

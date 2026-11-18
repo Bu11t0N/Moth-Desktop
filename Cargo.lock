@@ -2455,10 +2455,12 @@ dependencies = [
  "moth-core",
  "moth-engine",
  "moth-ipc",
+ "serde",
  "serde_json",
  "tokio",
  "uuid",
  "windows-service",
+ "zeroize",
 ]
 
 [[package]]

@@ -188,8 +188,10 @@ if ($service) {
         $oldHealth = Read-Health $client
         $oldVersion = $null
         if (-not [Version]::TryParse($oldHealth.version,[ref]$oldVersion) -or $oldVersion -lt [Version]'0.3.1' -or $oldVersion -gt [Version]$expectedVersion) { throw 'Existing service version is outside the supported upgrade range.' }
-        $tunnel = (& $client --tunnel-status) | ConvertFrom-Json
-        if ($LASTEXITCODE -ne 0 -or $tunnel.kind -ne 'tunnel' -or $tunnel.phase -notin @('disconnected','failed')) { throw 'Disconnect VPN before upgrading the service (including other accounts).' }
+        $statusArgument=if($oldVersion -ge [Version]'0.3.5'){'--connection-status'}else{'--tunnel-status'}
+        $statusKind=if($oldVersion -ge [Version]'0.3.5'){'connection'}else{'tunnel'}
+        $tunnel = (& $client $statusArgument) | ConvertFrom-Json
+        if ($LASTEXITCODE -ne 0 -or $tunnel.kind -ne $statusKind -or $tunnel.phase -notin @('disconnected','failed')) { throw 'Disconnect the active VPN/proxy before upgrading the service (including other accounts).' }
     } finally {
         if (-not $wasRunning) { Stop-Moth }
     }

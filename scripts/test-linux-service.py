@@ -98,6 +98,9 @@ def main():
         raise RuntimeError("Root inside a disposable hosted Linux CI VM is required")
     root = Path("/usr/lib/moth-desktop")
     unit = Path("/etc/systemd/system/moth-desktop.service")
+    guardian = Path("/etc/systemd/system/moth-egress-guard.service")
+    if guardian.exists():
+        raise RuntimeError("An existing guardian unit must not be replaced")
     if root.exists() or unit.exists() or Path("/sys/class/net/moth0").exists():
         raise RuntimeError("Existing installation/interface must never be replaced by acceptance")
     if Path("/etc/resolv.conf").resolve() != Path("/run/systemd/resolve/stub-resolv.conf"):
@@ -156,6 +159,12 @@ def main():
             root.chmod(0o755)  # Explicitly override the fixture's private umask.
             (root / "engines").mkdir(mode=0o755)
             (root / "engines").chmod(0o755)
+            settings_example=root/'desktop-settings-acceptance'
+            shutil.copyfile(repo/'target/debug/examples/desktop_settings_acceptance',settings_example)
+            settings_example.chmod(0o755)
+            run('runuser','-u',users[0],'--','env','GITHUB_ACTIONS=true','RUNNER_OS=Linux',
+                'XDG_CURRENT_DESKTOP=GNOME',f'XDG_RUNTIME_DIR=/run/user/23101',
+                'dbus-run-session','--',str(settings_example))
             for source, destination in [(repo / "target/debug/moth-service", root / "moth-service"),
                                         (repo / ".local/engines/linux-x64/xray", root / "engines/xray"),
                                         (repo / ".local/engines/linux-x64/sing-box", root / "engines/sing-box")]:
@@ -163,6 +172,8 @@ def main():
                 destination.chmod(0o755)
             shutil.copyfile(repo / "packaging/linux/moth-desktop.service", unit)
             unit.chmod(0o644)
+            shutil.copyfile(repo / "packaging/linux/moth-egress-guard.service", guardian)
+            guardian.chmod(0o644)
             run(str(root / "moth-service"), "--prepare-install")
             run("systemctl", "daemon-reload")
             server_id = str(uuid.uuid4())
@@ -272,6 +283,64 @@ def main():
             connected()
             cli(users[0], "--disconnect")
             restored()
+            # Persistent nftables acceptance against previously reachable real
+            # Authenticated LAN clients from an actual isolated peer namespace.
+            access_example=root/'proxy-access-acceptance'
+            shutil.copyfile(repo/'target/debug/examples/proxy_access_acceptance',access_example)
+            access_example.chmod(0o755)
+            run('ip','addr','add','10.231.91.1/30','dev','moth-ci-host')
+            run('ip','-n','moth-ci-sink','addr','add','10.231.91.2/30','dev','moth-ci-peer')
+            listener={'listen':'10.231.90.1','port':10808,'allowedClients':['10.231.90.2/32']}
+            result=cli(users[0],'--connect-proxy',json.dumps({'link':profile.decode(),'mode':'proxy','listener':listener}).encode())
+            if result.get('phase')!='connected' or result.get('mode')!='proxy':
+                raise RuntimeError('Real proxy-only startup failed')
+            if cli(users[0],'--tunnel-status').get('phase')=='connected' or Path('/sys/class/net/moth0').exists():
+                raise RuntimeError('Proxy-only was misreported or created a TUN')
+            # Private credentials stay in a captured pipe, never logs or argv.
+            access=json.loads(run('runuser','-u',users[0],'--','env','GITHUB_ACTIONS=true',str(access_example),'export').stdout)
+            for source,expected in [('10.231.90.2',True),('10.231.91.2',False)]:
+                payload=json.dumps({'access':access,'source':source,'expected':expected}).encode()
+                run('ip','netns','exec','moth-ci-sink','env','GITHUB_ACTIONS=true',str(access_example),'client',data=payload)
+            access.clear()
+            cli(users[0],'--disconnect')
+            run('ip','addr','del','10.231.91.1/30','dev','moth-ci-host')
+            run('ip','-n','moth-ci-sink','addr','del','10.231.91.2/30','dev','moth-ci-peer')
+            restored()
+            # Persistent nftables acceptance against previously reachable real
+            # IPv4/IPv6 peers. No missing-route timeout is counted as a pass.
+            connected()
+            traffic=cli(users[0],"--traffic")
+            if traffic.get("kind")!="traffic" or traffic.get("uploadedBytes",0)<=0:
+                raise RuntimeError("Actual service traffic counters missing")
+            if cli(users[1],"--traffic").get("code")!="notOwner":
+                raise RuntimeError("Another user obtained traffic summaries")
+            armed=cli(users[0],"--guard-on")
+            if not armed.get("enabled") or not armed.get("filtering"):
+                raise RuntimeError("Actual nftables guard was not verified")
+            if cli(users[1],"--guard-off").get("code")!="notOwner":
+                raise RuntimeError("Another user released the guard")
+            cli(users[0],"--disconnect")
+            def blocked():
+                for destination in ("10.231.90.2","fd24:4d4f:5448::2"):
+                    host=f"[{destination}]" if ":" in destination else destination
+                    if run("curl","--fail","--silent","--noproxy","*","--interface","moth-ci-host","--max-time","2",f"http://{host}:18080/blocked",check=False).returncode==0:
+                        raise RuntimeError("Direct IPv4/IPv6 escaped the persistent guard")
+                if not cli(users[0],"--guard-status").get("filtering"):
+                    raise RuntimeError("Persistent rules disappeared")
+            blocked()
+            old_pid=run("systemctl","show","moth-desktop.service","--property=MainPID","--value").stdout.strip()
+            run("systemctl","kill","--kill-whom=main","--signal=SIGKILL","moth-desktop.service")
+            wait(lambda:run("systemctl","show","moth-desktop.service","--property=MainPID","--value").stdout.strip() not in (b"0",old_pid) and cli(users[0],"--guard-status").get("filtering"),"Guard did not survive service death/restart")
+            blocked()
+            run("systemctl","stop","moth-desktop.service")
+            run(str(root/"moth-service"),"--restore-guard")
+            run(str(root/"moth-service"),"--release-guard")
+            run("systemctl","start","moth-desktop.service")
+            for destination in ("10.231.90.2","fd24:4d4f:5448::2"):
+                host=f"[{destination}]" if ":" in destination else destination
+                if run("curl","--fail","--silent","--noproxy","*","--interface","moth-ci-host","--max-time","3",f"http://{host}:18080/released").returncode:
+                    raise RuntimeError("Administrator release did not restore direct peers")
+            restored()
             # Actual GTK/WebKit windows under an ordinary user, with a real XFCE
             # tray host and separately without any tray host. No fake IPC state.
             gui = root / "moth-desktop"
@@ -328,6 +397,11 @@ def main():
             raise
         finally:
             run("systemctl", "stop", "moth-desktop.service", check=False)
+            if (root/"moth-service").exists():
+                run(str(root/"moth-service"),"--release-guard",check=False)
+            run("systemctl","stop","moth-egress-guard.service",check=False)
+            if guardian.exists():
+                guardian.unlink()
             for child in children:
                 child.kill()
                 child.wait(timeout=10)

@@ -35,4 +35,10 @@ test("proxy status is distinct and access credentials are shown only on request"
   page.once("dialog",d=>d.dismiss());
   await page.getByRole("button",{name:"Save mode",exact:true}).click();
   expect(await page.evaluate(()=>(window as unknown as {proxySaves:number}).proxySaves)).toBe(0);
+  await page.setViewportSize({width:800,height:600});
+  await page.locator('[data-proxy-form] [name="address"]').focus();
+  await page.keyboard.press("Tab");
+  await expect(page.locator('[data-proxy-form] [name="port"]')).toBeFocused();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+  await page.screenshot({path:"test-results/proxy-settings-small.png"});
 });

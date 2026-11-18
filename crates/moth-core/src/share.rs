@@ -4,6 +4,12 @@ use url::Url;
 /// Internal transport to the service, never exposed to the webview or logs.
 /// Re-import before sending to prevent invalid persisted models crossing the boundary.
 pub fn share_link(profile: &Profile) -> Result<String, &'static str> {
+    if profile.protocol.uses_sing_box() {
+        return crate::native_protocols::share(profile);
+    }
+    if profile.options.native.is_some() {
+        return Err("Параметры не соответствуют протоколу");
+    }
     if !matches!(profile.protocol, Protocol::Vless | Protocol::Trojan) {
         return crate::extra_protocols::share(profile);
     }

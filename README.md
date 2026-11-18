@@ -3,37 +3,44 @@
 Windows-first desktop companion to [Moth for Android](https://github.com/Bu11t0N/Moth).
 Rust domain/platform layers and a Tauri 2 + TypeScript interface for Windows x64 and Ubuntu 24.04 x64.
 
-**[0.3.3 downloads](https://github.com/Bu11t0N/Moth-Desktop/releases/tag/v0.3.3): Windows NSIS/ZIP and Ubuntu Debian package, system VPN service and signed in-app updates. [Actual acceptance and limitations](docs/STATUS.md). Kill switch and automatic reconnect are not implemented.**
-
-See the [desktop roadmap and Android feature comparison](docs/ROADMAP.ru.md)
-for the planned implementation order and acceptance criteria.
+**0.3.5 source candidate:** persistent network block, measured activity, diagnostics,
+login startup, authenticated proxy/LAN mode and additional typed protocols.
+[Release packages](https://github.com/Bu11t0N/Moth-Desktop/releases/tag/v0.3.5)
+are published only after native Windows/Linux and signing gates pass.
+[Validation evidence and limits](docs/STATUS.md).
+The previous published release is [0.3.4](https://github.com/Bu11t0N/Moth-Desktop/releases/tag/v0.3.4).
 
 ## Implemented
 
-- Local VLESS/Trojan URI and Base64-list import with explicit validation and atomic batches.
-- TCP, WebSocket, gRPC and XHTTP profile representations; TLS and VLESS Reality/Vision.
-- Deduplication, server selection/removal, credential-free UI summaries.
-- Windows account-bound DPAPI storage with atomic replacement. No plaintext/localStorage fallback.
-- Desktop interface: Home, Servers, Settings, import and delete dialogs.
-- Pinned Xray 26.10.21 and sing-box 1.12.25, archive/executable SHA-256 verification.
-- Real per-server HTTPS probe through a short-lived authenticated local Xray proxy.
-- Engine-validated configuration matrix and an executable sing-box TUN / Xray bridge.
-- Windows Job Object cleanup, bounded process lifetimes, config through stdin, suppressed core logs.
-- Windows Service + authenticated/versioned named pipe, optional service-backed probes.
-- Connect/disconnect via authenticated service, per-account connection ownership, engine monitoring.
-- Native tray with open/disconnect/exit, close-to-tray, single instance and verified disconnect before Exit.
-- GUI 0.3.3 remains compatible with installed service 0.3.1 (IPC v2); no service upgrade is needed for tray support.
-- Explicit Install-Service.cmd bootstrap with Windows UAC; the GUI runs as an ordinary user.
-- Service/core version diagnostics with authenticated IPC compatibility and current service core hash checks.
-- Staged 0.3.1/0.3.2 service upgrades, startup verification, automatic failure rollback and unchanged DPAPI profiles.
-- Graphical Windows installer/uninstaller with ordinary-user shortcuts and complete GUI/service/core transactions.
-- Ubuntu 24.04 root daemon, authenticated UID IPC, systemd-resolved TUN and password-protected Secret Service storage.
-- Standard Debian packaging and native Linux tray/taskbar behavior. See [supported Linux configuration](docs/LINUX.md).
-- Signed metadata/package verification, privileged fixed-operation installation and ordinary-user update monitor. See [update architecture and release gate](docs/UPDATES.md).
+- Typed URI/Base64 and supported sing-box/Xray JSON/Clash server extraction;
+  VLESS/Trojan, VMess AEAD, Shadowsocks AEAD/2022, SOCKS5/HTTP(S), Hysteria2,
+  TUIC v5 and AnyTLS. Unknown or lossy options reject an import atomically.
+- Bounded subscriptions, origin-scoped optional device consent, provider metadata,
+  scheduled/VPN-only refresh, library search/favorites and real sequential probes.
+- Windows DPAPI and password-protected Linux Secret Service; credential-free UI
+  summaries and encrypted portable backups with compatible Android v1 migration.
+- Pinned Xray 26.10.21 and sing-box 1.12.25 with compiled executable hashes.
+  Configurations use private stdin; engine logs are suppressed.
+- Authenticated per-account service lifecycle, real TUN/DNS startup verification,
+  routing/DNS/MTU/IPv6/per-app policies and optional recovery/health/failover.
+- Optional persistent owned WFP/nftables block, retained after Disconnect/Exit,
+  with explicit release and administrator recovery. See [recovery](docs/SERVICE.md).
+- Authenticated HTTP/SOCKS proxy-only mode, optional TUN sharing and explicit
+  private-interface LAN allowlists. Proxy mode is distinct from system VPN.
+  Per-user OS proxy changes have protected ownership restoration.
+- Actual engine traffic/connections, opt-in bounded history, typed diagnostic
+  preview/export, Settings/Diagnostics/About/licenses, Russian/English and themes.
+- Native tray/single instance, separate ordinary-user login startup, staged
+  Windows NSIS/ZIP and Ubuntu Debian installation, signed in-app updates.
 
-Unsupported URI options are rejected rather than silently discarded. HTTP subscription fetching,
-Clash/sing-box/Xray JSON imports, Android backups and other protocols are planned, not implemented.
-Linux acceptance covers the supported systemd-resolved/Secret Service configuration; other distributions remain unaccepted.
+New features require the coordinated 0.3.5 service. IPC v2 default connection
+commands remain compatible with older services; they cannot enable new features.
+No full Android/Clash/Mihomo/provider equivalence or universal power-loss/boot
+guarantee is claimed. Proxy mode serves configured applications only. External
+OS edits are preserved; check/restore the OS proxy after a crash before removal.
+Linux support is limited to documented Ubuntu 24.04 x64 systemd-resolved and
+Secret Service configurations. See [engines](docs/ENGINES.md),
+[Linux support](docs/LINUX.md) and [updates](docs/UPDATES.md).
 
 ## Develop
 

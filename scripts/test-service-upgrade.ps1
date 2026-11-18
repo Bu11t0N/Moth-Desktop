@@ -86,7 +86,7 @@ foreach ($baseline in @($Baseline031Directory,$Baseline032Directory)) {
     if ((Health-Version) -ne $before) { throw 'Stopped-service rollback did not restore baseline.' }
     Check-Profiles
     & $installer -Action Install -PackageDirectory $candidate
-    if ((Health-Version) -ne '0.3.4') { throw 'Upgrade did not activate candidate.' }
+    if ((Health-Version) -ne '0.3.5') { throw 'Upgrade did not activate candidate.' }
     Check-Profiles
     # Repeated update, stopped-service update and removal/reinstall without manual cleanup.
     & $installer -Action Install -PackageDirectory $candidate
@@ -94,7 +94,7 @@ foreach ($baseline in @($Baseline031Directory,$Baseline032Directory)) {
     & $installer -Action Install -PackageDirectory $candidate
     & $installer -Action Remove
     & $installer -Action Install -PackageDirectory $candidate
-    if ((Health-Version) -ne '0.3.4') { throw 'Reinstallation failed.' }
+    if ((Health-Version) -ne '0.3.5') { throw 'Reinstallation failed.' }
     Retire-Installation
     Write-Output "Upgrade from $before, post-start failure rollback, repeat/stopped update, removal/reinstall and DPAPI preservation passed."
 }
@@ -103,7 +103,7 @@ $rejected=$false
 try { & $fault -Action Install -PackageDirectory $candidate } catch { $rejected=$true }
 if (-not $rejected -or (Get-Service MothDesktopService -ErrorAction SilentlyContinue) -or (Test-Path -LiteralPath $root)) { throw 'Failed clean install was not rolled back.' }
 & $installer -Action Install -PackageDirectory $candidate
-if ((Health-Version) -ne '0.3.4') { throw 'Clean install failed.' }
+if ((Health-Version) -ne '0.3.5') { throw 'Clean install failed.' }
 Check-Profiles
 Retire-Installation
 Write-Output 'Clean installation, failed clean installation cleanup and profile preservation passed.'

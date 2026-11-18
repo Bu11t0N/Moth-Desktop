@@ -184,6 +184,7 @@ impl Controller {
                 };
             };
             let primary = moth_engine::guard::Endpoint {
+                engine: moth_engine::profile_engine(profile),
                 host: profile.host.clone(),
                 address: session.endpoint().ip(),
                 port: session.endpoint().port(),
@@ -194,10 +195,11 @@ impl Controller {
             // Resolve backups while the established TUN is still active. No
             // unrestricted DNS exception is added when a candidate fails.
             for p in candidates.iter().take(7) {
-                if endpoints
-                    .iter()
-                    .any(|e| e.host == p.host && e.port == p.port)
-                {
+                if endpoints.iter().any(|e| {
+                    e.host == p.host
+                        && e.port == p.port
+                        && e.engine == moth_engine::profile_engine(p)
+                }) {
                     continue;
                 }
                 if let Ok(Ok(addresses)) = tokio::time::timeout(
@@ -208,6 +210,7 @@ impl Controller {
                 {
                     for address in addresses.take(3) {
                         endpoints.push(moth_engine::guard::Endpoint {
+                            engine: moth_engine::profile_engine(p),
                             host: p.host.clone(),
                             address: address.ip(),
                             port: address.port(),

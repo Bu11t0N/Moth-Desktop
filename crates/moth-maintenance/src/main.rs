@@ -239,11 +239,11 @@ fn installed_version(job: &Path) -> Result<(String, bool)> {
     let state = command(
         job,
         &service,
-        &["--tunnel-status".as_ref()],
+        &["--connection-status".as_ref()],
         Duration::from_secs(10),
     )?;
     let state: serde_json::Value = serde_json::from_slice(&state).map_err(|_| ())?;
-    if state["kind"] != "tunnel"
+    if state["kind"] != "connection"
         || !matches!(state["phase"].as_str(), Some("disconnected" | "failed"))
     {
         return Err(());

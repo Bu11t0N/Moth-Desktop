@@ -94,6 +94,12 @@ pub(crate) fn parse(line: &str) -> Result<Profile, &'static str> {
             return Err("Некорректное percent-кодирование");
         }
     }
+    if ["hy2://", "hysteria2://", "tuic://", "anytls://"]
+        .iter()
+        .any(|prefix| line.starts_with(prefix))
+    {
+        return crate::native_protocols::parse(line);
+    }
     if line.starts_with("vmess://")
         || line.starts_with("ss://")
         || line.starts_with("socks://")

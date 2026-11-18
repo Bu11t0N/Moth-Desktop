@@ -27,7 +27,7 @@ function Install-Setup([string]$Path) {
     if ($process.ExitCode -ne 0) { throw 'Actual baseline NSIS installation failed.' }
 }
 try {
-    Install-Setup (Join-Path $fixture 'baseline/Moth-0.3.3-windows-x64-setup.exe')
+    Install-Setup (Join-Path $fixture 'baseline/Moth-0.3.4-windows-x64-setup.exe')
     $installed=$true
     $listener=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,0)
     $listener.Start();$port=$listener.LocalEndpoint.Port;$listener.Stop()
@@ -103,7 +103,7 @@ try {
                 $requestDirectory=Join-Path $data "updates/$identifier"
                 $stopped=(& (Join-Path $root 'moth-service.exe') --tunnel-status) | ConvertFrom-Json
                 if ($LASTEXITCODE -ne 0 -or $stopped.phase -ne 'disconnected') { throw 'GUI did not confirm VPN stop before privileged update.' }
-                $helper=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'Moth Desktop/maintenance/0.3.3/moth-maintenance.exe'
+                $helper=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'Moth Desktop/maintenance/0.3.4/moth-maintenance.exe'
                 $helperProcess=Start-Process -FilePath $helper -ArgumentList "--apply `"$requestDirectory`"" -WindowStyle Hidden -PassThru
                 $jobs+=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) "Moth Desktop/updates/$identifier"
                 $authorized=$true
@@ -129,7 +129,7 @@ try {
         $hash=(Get-FileHash -LiteralPath (Join-Path $data 'profiles.dpapi') -Algorithm SHA256).Hash
         if ($originalProfileHash -and $hash -cne $originalProfileHash) { throw 'Updater modified account-bound DPAPI bytes.' }
         $originalProfileHash=$hash
-        $expected=if($case -eq 'success'){'0.3.4'}else{'0.3.3'}
+        $expected=if($case -eq 'success'){'0.3.5'}else{'0.3.4'}
         $health=(& (Join-Path $root 'moth-service.exe') --status) | ConvertFrom-Json
         if ($LASTEXITCODE -ne 0 -or $health.version -ne $expected -or @($health.engines | Where-Object {-not $_.available}).Count) { throw 'Installed GUI/service/core version verification failed.' }
         $guiProcess.Dispose();$guiProcess=$null

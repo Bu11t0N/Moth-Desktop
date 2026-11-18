@@ -249,6 +249,7 @@ fn xray(v: &Value) -> Result<Profile> {
                 p.credential = text(user, "pass");
             }
         }
+        _ => return Err("Этот протокол не является Xray outbound"),
     }
     let stream = &v["streamSettings"];
     if !stream.is_null() {
@@ -400,6 +401,12 @@ fn xray(v: &Value) -> Result<Profile> {
     canonical(p)
 }
 fn sing(v: &Value) -> Result<Profile> {
+    if matches!(
+        v["type"].as_str(),
+        Some("hysteria2" | "hy2" | "tuic" | "anytls")
+    ) {
+        return crate::native_protocols::document(v, false);
+    }
     keys(
         v,
         &[
@@ -538,6 +545,12 @@ fn sing(v: &Value) -> Result<Profile> {
     canonical(p)
 }
 fn clash(v: &Value) -> Result<Profile> {
+    if matches!(
+        v["type"].as_str(),
+        Some("hysteria2" | "hy2" | "tuic" | "anytls")
+    ) {
+        return crate::native_protocols::document(v, true);
+    }
     keys(
         v,
         &[

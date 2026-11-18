@@ -13,6 +13,7 @@ const en: Record<string, string> = {
   "Автовосстановление включается отдельно в настройках.": "Automatic recovery is enabled separately in settings.",
   "Туннель проверен · kill switch включён": "Tunnel verified · kill switch is on",
   "Туннель проверен · kill switch не подтверждён": "Tunnel verified · kill switch is unverified",
+  "Туннель проверен · kill switch выключен": "Tunnel verified · kill switch is off",
   "Выйти, сохранить блокировку": "Exit and keep network blocked",
   "Kill switch включается отдельно; при включении Disconnect и Exit сохраняют блокировку.": "Kill switch is enabled separately; when enabled, Disconnect and Exit retain the network block.",
   "Резервные копии и перенос Android": "Backups and Android migration",

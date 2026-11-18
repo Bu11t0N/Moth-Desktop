@@ -153,6 +153,7 @@ mod tests {
         let policy = Policy::new(
             "1000".into(),
             vec![super::super::Endpoint {
+                engine: crate::Engine::Xray,
                 host: "vpn.example".into(),
                 address: "192.0.2.1".parse().unwrap(),
                 port: 443,

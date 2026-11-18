@@ -216,7 +216,18 @@ pub(super) fn apply(policy: &Policy) -> Result<(), EngineError> {
     let acl = descriptor("D:P(A;;GA;;;SY)(A;;GA;;;BA)")?;
     let system = descriptor("D:(A;;CC;;;SY)")?;
     let root = std::env::var_os("ProgramFiles").ok_or(EngineError::Process)?;
-    let xray = app(&Path::new(&root).join("Moth Desktop/engines/xray.exe"))?;
+    let needs_app = |engine| {
+        policy
+            .endpoints
+            .iter()
+            .any(|e| e.engine == engine && !e.address.is_loopback())
+    };
+    let xray = needs_app(crate::Engine::Xray)
+        .then(|| app(&Path::new(&root).join("Moth Desktop/engines/xray.exe")))
+        .transpose()?;
+    let sing_box = needs_app(crate::Engine::SingBox)
+        .then(|| app(&Path::new(&root).join("Moth Desktop/engines/sing-box.exe")))
+        .transpose()?;
     let svchost = app(
         &Path::new(&std::env::var_os("SystemRoot").ok_or(EngineError::Process)?)
             .join("System32/svchost.exe"),
@@ -307,11 +318,9 @@ pub(super) fn apply(policy: &Policy) -> Result<(), EngineError> {
                         )?;
                         slot += 1;
                     }
-                    for endpoint in policy
-                        .endpoints
-                        .iter()
-                        .filter(|e| e.address.is_ipv4() == (family == 0))
-                    {
+                    for endpoint in policy.endpoints.iter().filter(|e| {
+                        e.address.is_ipv4() == (family == 0) && !e.address.is_loopback()
+                    }) {
                         let mut v6 = FWP_BYTE_ARRAY16 {
                             byteArray16: match endpoint.address {
                                 IpAddr::V6(ip) => ip.octets(),
@@ -346,7 +355,13 @@ pub(super) fn apply(policy: &Policy) -> Result<(), EngineError> {
                             condition(
                                 FWPM_CONDITION_ALE_APP_ID,
                                 FWP_BYTE_BLOB_TYPE,
-                                FWP_CONDITION_VALUE0_0 { byteBlob: xray.0 },
+                                FWP_CONDITION_VALUE0_0 {
+                                    byteBlob: if endpoint.engine == crate::Engine::SingBox {
+                                        sing_box.as_ref().ok_or(EngineError::Integrity)?.0
+                                    } else {
+                                        xray.as_ref().ok_or(EngineError::Integrity)?.0
+                                    },
+                                },
                             ),
                             condition(
                                 FWPM_CONDITION_ALE_USER_ID,

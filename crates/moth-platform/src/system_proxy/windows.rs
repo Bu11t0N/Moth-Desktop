@@ -149,25 +149,15 @@ pub(super) fn write(config: &Config) -> Result<(), &'static str> {
     Ok(())
 }
 pub(super) fn restore(before: &Config, installed: &Config) -> Result<(), &'static str> {
-    let mut current = read()?;
-    let previous = current.clone();
-    if current.flags == installed.flags {
-        current.flags = before.flags;
-    }
-    for (value, ours, prior) in [
-        (&mut current.server, &installed.server, &before.server),
-        (&mut current.bypass, &installed.bypass, &before.bypass),
-        (&mut current.pac, &installed.pac, &before.pac),
-    ] {
-        if value == ours {
-            *value = prior.clone();
-        }
-    }
-    if current == previous {
+    let current = read()?;
+    if current == *before {
         return Ok(());
     }
-    write(&current)?;
-    if read()? != current {
+    if current != *installed {
+        return Err("Прокси изменён вне Moth; изменения сохранены. Проверьте параметры ОС и журнал восстановления");
+    }
+    write(before)?;
+    if read()? != *before {
         return Err(FAILED);
     }
     Ok(())

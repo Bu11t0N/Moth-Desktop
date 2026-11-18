@@ -147,28 +147,25 @@ impl EngineSet {
             username: Uuid::new_v4().to_string(),
             password: Uuid::new_v4().to_string(),
         };
-        let mut config = moth_core::xray_bridge_config(profile, &bridge);
-        let outbound = &mut config["outbounds"][0];
-        let key = if matches!(
-            profile.protocol,
-            moth_core::Protocol::Vless | moth_core::Protocol::Vmess
-        ) {
-            "vnext"
-        } else {
-            "servers"
-        };
-        outbound["settings"][key][0]["address"] = serde_json::json!(address.ip().to_string());
-        outbound["streamSettings"]["sockopt"] = serde_json::json!({"interface":interface});
+        let (upstream_engine, mut config) = crate::upstream::config(profile, Some(&bridge))?;
+        crate::upstream::pin(
+            &mut config,
+            upstream_engine,
+            profile,
+            address.ip(),
+            Some(&interface),
+            cfg!(target_os = "linux"),
+        );
         let mut tun_config = moth_core::sing_box_tun_policy(&bridge, policy)
             .map_err(|_| EngineError::InvalidConfig)?;
         tun_config["outbounds"][1]["bind_interface"] = serde_json::json!(interface);
         protect_verifier(&mut tun_config, policy)?;
         tun_config["inbounds"].as_array_mut().ok_or(EngineError::Process)?.push(serde_json::json!({"type":"mixed","tag":"subscription-in","listen":"127.0.0.1","listen_port":subscription_proxy.port,"users":[{"username":subscription_proxy.username,"password":subscription_proxy.password}]}));
         let public_reservation = public.map(|p| p.add(&mut tun_config)).transpose()?;
-        self.validate(Engine::Xray, &config).await?;
+        self.validate(upstream_engine, &config).await?;
         let (telemetry, telemetry_reservation) = self.attach_telemetry(&mut tun_config).await?;
         drop(reservation);
-        let mut upstream = self.spawn_config(Engine::Xray, &config, false).await?;
+        let mut upstream = self.spawn_config(upstream_engine, &config, false).await?;
         let start = Instant::now();
         loop {
             if upstream
@@ -307,6 +304,16 @@ mod acceptance {
                 || std::env::var("MOTH_DISPOSABLE_VM").as_deref() == Ok("1")
         );
         let engines = EngineSet::new(development_directory().unwrap());
+        assert!(
+            timeout(
+                Duration::from_secs(5),
+                tokio::net::TcpStream::connect("1.1.1.1:443")
+            )
+            .await
+            .unwrap()
+            .is_ok(),
+            "Direct egress baseline is required before guard acceptance"
+        );
         let fixture = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let target_port = fixture.local_addr().unwrap().port();
         let udp = tokio::net::UdpSocket::bind((Ipv4Addr::LOCALHOST, target_port))
@@ -455,6 +462,76 @@ mod acceptance {
                 .send()
                 .await
                 .is_err());
+            if split.is_none() {
+                // Actual persistent WFP calls run only in this disposable VM
+                // test. Drop releases our rules even if an assertion panics.
+                assert!(guard::load().unwrap().is_none());
+                assert!(!guard::active().unwrap());
+                moth_ipc::maintenance::initialize().unwrap();
+                struct ReleaseGuard;
+                impl Drop for ReleaseGuard {
+                    fn drop(&mut self) {
+                        let _ = guard::release();
+                    }
+                }
+                let cleanup = ReleaseGuard;
+                let policy = guard::Policy::new(
+                    "isolated-windows-acceptance".into(),
+                    vec![guard::Endpoint {
+                        host: profile.host.clone(),
+                        address: "127.0.0.1".parse().unwrap(),
+                        port: profile.port,
+                        engine: Engine::Xray,
+                    }],
+                )
+                .unwrap();
+                guard::enable(&policy).unwrap();
+                assert!(guard::active().unwrap());
+                assert!(
+                    timeout(
+                        Duration::from_secs(3),
+                        tokio::net::TcpStream::connect("1.1.1.1:443")
+                    )
+                    .await
+                    .is_ok_and(|r| r.is_err()),
+                    "Direct TCP was not denied by WFP"
+                );
+                let dns = tokio::net::UdpSocket::bind("0.0.0.0:0").await.unwrap();
+                assert!(
+                    dns.send_to(&[0u8; 32], "1.1.1.1:53").await.is_err(),
+                    "Direct DNS socket was not denied by WFP"
+                );
+                let mut guarded = engines.connect_checked(&profile, url).await.unwrap();
+                assert!(guarded.alive());
+                let api = guarded.telemetry().expect("actual TUN telemetry");
+                api.assert_requires_authentication().await;
+                assert!(api.snapshot().await.unwrap().uploaded_bytes > 0);
+                // Simulated engine process death is a real TerminateProcess,
+                // followed by actual adapter teardown; guard lifetime is separate.
+                guarded.upstream.child.kill().await.unwrap();
+                guarded.stop().await;
+                assert!(guard::active().unwrap());
+                guard::restore().unwrap();
+                assert!(guard::active().unwrap());
+                assert!(timeout(
+                    Duration::from_secs(3),
+                    tokio::net::TcpStream::connect("1.1.1.1:443")
+                )
+                .await
+                .is_ok_and(|r| r.is_err()));
+                drop(cleanup);
+                assert!(!guard::active().unwrap() && guard::load().unwrap().is_none());
+                assert!(
+                    timeout(
+                        Duration::from_secs(5),
+                        tokio::net::TcpStream::connect("1.1.1.1:443")
+                    )
+                    .await
+                    .unwrap()
+                    .is_ok(),
+                    "Explicit release did not restore the direct baseline"
+                );
+            }
         }
         server.stop().await.unwrap();
         endpoint.abort();

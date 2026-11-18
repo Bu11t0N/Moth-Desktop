@@ -1,4 +1,6 @@
 #[cfg(any(windows, target_os = "linux"))]
+mod cli;
+#[cfg(any(windows, target_os = "linux"))]
 mod control;
 #[cfg(target_os = "linux")]
 mod linux;
@@ -11,6 +13,14 @@ mod tunnel;
 
 #[cfg(windows)]
 fn main() {
+    let option = std::env::args().nth(1).unwrap_or_default();
+    if cli::handles(&option) {
+        if let Err(error) = cli::run(&option) {
+            eprintln!("{error}");
+            std::process::exit(1);
+        }
+        return;
+    }
     let result = match std::env::args().nth(1).as_deref() {
         Some("--service") => scm::dispatch(),
         Some("--version") => {
@@ -116,6 +126,14 @@ fn main() {
 }
 #[cfg(target_os = "linux")]
 fn main() {
+    let option = std::env::args().nth(1).unwrap_or_default();
+    if cli::handles(&option) {
+        if let Err(error) = cli::run(&option) {
+            eprintln!("{error}");
+            std::process::exit(1);
+        }
+        return;
+    }
     if let Err(error) = linux::main() {
         eprintln!("{error}");
         std::process::exit(1);

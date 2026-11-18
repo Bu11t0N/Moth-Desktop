@@ -1,7 +1,11 @@
-Moth Desktop 0.3.4
+Moth Desktop 0.3.5
 
-Subscriptions by URL with per-source HWID/device consent, quota metadata, scheduled and VPN-only refresh. Added library search/favorites/sorting, supported JSON/Clash imports and additional typed profile families. Unsupported options fail explicitly; paid-provider compatibility is provider-specific.
+Optional persistent WFP/nftables block with explicit release/recovery; Disconnect and Exit retain it. Direct/per-app bypass and LAN sharing cannot be combined with the block. No universal cold-boot or sudden power-loss guarantee is claimed.
 
-Connection policies, executable-path splitting, optional recovery/health/failover, encrypted backups and compatible Android v1 migration with preview. Light/dark/system themes and Russian/English UI. Fixed Russian installer/uninstaller and license text.
+Measured engine traffic, session time, connection summaries, optional bounded private history, diagnostics with clear/preview/export, and completed Settings/Diagnostics/About/licenses. Login startup is separate from automatic connection.
 
-Install the complete package for new service features. Existing protected storage, pinned engines and production updater signatures are retained. No persistent kill switch or full Android parity; ordinary networking can return after failure. No general proxy/LAN, traffic telemetry or OS login autostart. Windows x64 requires WebView2; Linux support is limited to Ubuntu 24.04 x64.
+Authenticated HTTP/SOCKS proxy-only mode, optional TUN sharing and private LAN allowlists. Optional per-user Windows/GNOME OS proxy changes have protected ownership recovery. Proxy mode serves configured apps, without system TUN. After a crash, restore/check OS proxy settings before uninstalling. External edits are preserved; manual OS recovery remains available.
+
+Hysteria2/salamander, TUIC v5 and AnyTLS supported subsets use pinned engines with certificate verification. Unsupported options fail explicitly; no full Android or Clash/Mihomo parity. Existing subscriptions, consent, library, routing, recovery, backups and themes remain.
+
+Install the complete package for new service features. Windows x64 requires WebView2; Linux support is Ubuntu 24.04 x64 in the documented configuration. Production updater signatures and protected storage are unchanged; no Windows Authenticode claim.

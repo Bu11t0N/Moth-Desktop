@@ -10,6 +10,9 @@ pub enum Protocol {
     Shadowsocks,
     Socks,
     Http,
+    Hysteria2,
+    Tuic,
+    AnyTls,
 }
 
 impl Protocol {
@@ -21,6 +24,9 @@ impl Protocol {
             Self::Shadowsocks => "Shadowsocks",
             Self::Socks => "SOCKS5",
             Self::Http => "HTTP",
+            Self::Hysteria2 => "Hysteria2",
+            Self::Tuic => "TUIC v5",
+            Self::AnyTls => "AnyTLS",
         }
     }
 }
@@ -28,6 +34,8 @@ impl Protocol {
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProxyOptions {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native: Option<crate::NativeProtocolOptions>,
     #[serde(default)]
     pub username: String,
     #[serde(default)]
@@ -106,11 +114,15 @@ impl Profile {
             host: self.host.clone(),
             port: self.port,
             protocol: self.protocol.label().into(),
-            transport: match self.transport {
-                Transport::Tcp => "TCP",
-                Transport::Ws { .. } => "WebSocket",
-                Transport::Grpc { .. } => "gRPC",
-                Transport::Xhttp { .. } => "XHTTP",
+            transport: if matches!(self.protocol, Protocol::Hysteria2 | Protocol::Tuic) {
+                "QUIC"
+            } else {
+                match self.transport {
+                    Transport::Tcp => "TCP",
+                    Transport::Ws { .. } => "WebSocket",
+                    Transport::Grpc { .. } => "gRPC",
+                    Transport::Xhttp { .. } => "XHTTP",
+                }
             }
             .into(),
             security: match self.tls {
@@ -311,6 +323,7 @@ pub fn xray_check_config(profile: &Profile) -> serde_json::Value {
             }
             json!({"servers":[server]})
         }
+        _ => return json!({"outbounds":[{"protocol":"moth-unsupported-native-family"}]}),
     };
     let mut stream = json!({});
     match &profile.transport {
@@ -360,5 +373,5 @@ pub fn xray_check_config(profile: &Profile) -> serde_json::Value {
             stream["realitySettings"] = json!({"serverName":server_name,"fingerprint":fingerprint,"publicKey":public_key,"shortId":short_id});
         }
     }
-    json!({"log":{"loglevel":"none"},"outbounds":[{"tag":"proxy","protocol":match profile.protocol {Protocol::Vless=>"vless",Protocol::Trojan=>"trojan",Protocol::Vmess=>"vmess",Protocol::Shadowsocks=>"shadowsocks",Protocol::Socks=>"socks",Protocol::Http=>"http"},"settings":settings,"streamSettings":stream}]})
+    json!({"log":{"loglevel":"none"},"outbounds":[{"tag":"proxy","protocol":match profile.protocol {Protocol::Vless=>"vless",Protocol::Trojan=>"trojan",Protocol::Vmess=>"vmess",Protocol::Shadowsocks=>"shadowsocks",Protocol::Socks=>"socks",Protocol::Http=>"http",_=>"moth-unsupported-native-family"},"settings":settings,"streamSettings":stream}]})
 }

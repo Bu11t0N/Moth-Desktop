@@ -279,6 +279,9 @@ async fn disconnect_vpn(app: tauri::AppHandle) -> Result<moth_ipc::ConnectionSta
     let _controls = lifecycle.controls.write().await;
     tray::stop_owned().await.map_err(|e| e.to_string())?;
     proxy::restore_owned(&app).await?;
+    if matches!(moth_ipc::service_is_stopped(), Ok(true)) {
+        return Ok(moth_ipc::TunnelState::default().into());
+    }
     tunnel_call(moth_ipc::Command::ConnectionStatus {}).await
 }
 #[tauri::command]
@@ -378,8 +381,12 @@ async fn connect_vpn(
         if let Err(error) = proxy::apply_system(&app, preferences.listener.port).await {
             // The selected OS mode failed. Keep the recovery journal until the
             // owned settings are restored; never report a successful OS proxy.
-            let _ = tunnel_call(moth_ipc::Command::Disconnect {}).await;
-            let _ = proxy::restore_owned(&app).await;
+            if tunnel_call(moth_ipc::Command::Disconnect {})
+                .await
+                .is_ok_and(|s| s.phase == moth_ipc::TunnelPhase::Disconnected)
+            {
+                let _ = proxy::restore_owned(&app).await;
+            }
             return Err(error);
         }
     }
@@ -479,6 +486,7 @@ fn main() {
             proxy::system_proxy_status,
             proxy::proxy_access,
             proxy::restore_system_proxy,
+            proxy::acknowledge_proxy_recovery,
             autostart::autostart_status,
             autostart::set_autostart,
             about::license_document,

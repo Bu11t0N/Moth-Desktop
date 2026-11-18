@@ -214,28 +214,19 @@ impl EngineSet {
             username: Uuid::new_v4().to_string(),
             password: Uuid::new_v4().to_string(),
         };
-        let mut upstream = moth_core::xray_bridge_config(profile, &bridge);
-        let key = if matches!(
-            profile.protocol,
-            moth_core::Protocol::Vless | moth_core::Protocol::Vmess
-        ) {
-            "vnext"
-        } else {
-            "servers"
-        };
-        upstream["outbounds"][0]["settings"][key][0]["address"] =
-            serde_json::json!(endpoint.ip().to_string());
+        let (upstream_engine, mut upstream) = crate::upstream::config(profile, Some(&bridge))?;
         #[cfg(windows)]
-        {
-            let interface = crate::tunnel::upstream_interface(endpoint.ip())?;
-            upstream["outbounds"][0]["streamSettings"]["sockopt"] =
-                serde_json::json!({"interface":interface});
-        }
+        let interface = Some(crate::tunnel::upstream_interface(endpoint.ip())?);
         #[cfg(target_os = "linux")]
-        if maintenance.is_some() {
-            upstream["outbounds"][0]["streamSettings"]["sockopt"] =
-                serde_json::json!({"mark":0x4d4f5448_u32});
-        }
+        let interface: Option<String> = None;
+        crate::upstream::pin(
+            &mut upstream,
+            upstream_engine,
+            profile,
+            endpoint.ip(),
+            interface.as_deref(),
+            cfg!(target_os = "linux") && maintenance.is_some(),
+        );
         let mut config = moth_core::sing_box_tun_policy(&bridge, policy)
             .map_err(|_| EngineError::InvalidConfig)?;
         // Proxy routing is force-upstream. TUN-only per-app/DNS/capture policy
@@ -256,10 +247,10 @@ impl EngineSet {
             .remove("dns");
         let public = plan.public.as_ref().ok_or(EngineError::InvalidConfig)?;
         let public_reservation = public.add(&mut config)?;
-        self.validate(Engine::Xray, &upstream).await?;
+        self.validate(upstream_engine, &upstream).await?;
         let (telemetry, telemetry_reservation) = self.attach_telemetry(&mut config).await?;
         drop(reservation);
-        let upstream = self.spawn_config(Engine::Xray, &upstream, false).await?;
+        let upstream = self.spawn_config(upstream_engine, &upstream, false).await?;
         drop(private_reservation);
         drop(public_reservation);
         drop(telemetry_reservation);

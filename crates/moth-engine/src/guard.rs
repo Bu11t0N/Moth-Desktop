@@ -19,6 +19,8 @@ const STATE: &str = "egress-guard-v1.json";
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Endpoint {
+    #[serde(default)]
+    pub engine: crate::Engine,
     pub host: String,
     pub address: IpAddr,
     pub port: u16,
@@ -64,6 +66,16 @@ impl Policy {
         self.endpoints
             .iter()
             .find(|e| e.host == host && e.port == port)
+            .map(|e| e.address)
+    }
+    pub fn address_for(&self, profile: &moth_core::Profile) -> Option<IpAddr> {
+        self.endpoints
+            .iter()
+            .find(|e| {
+                e.host == profile.host
+                    && e.port == profile.port
+                    && e.engine == crate::profile_engine(profile)
+            })
             .map(|e| e.address)
     }
 }
@@ -159,7 +171,7 @@ pub fn refresh_interface() -> Result<(), EngineError> {
 pub async fn resolve(profile: &moth_core::Profile) -> Result<std::net::SocketAddr, EngineError> {
     if let Some(policy) = load()? {
         return policy
-            .address(&profile.host, profile.port)
+            .address_for(profile)
             .map(|ip| std::net::SocketAddr::new(ip, profile.port))
             .ok_or(EngineError::Network);
     }
@@ -181,6 +193,7 @@ mod tests {
         let p = Policy::new(
             "owner".into(),
             vec![Endpoint {
+                engine: crate::Engine::Xray,
                 host: "vpn.example".into(),
                 address: "192.0.2.1".parse().unwrap(),
                 port: 443,
