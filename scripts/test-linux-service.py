@@ -163,6 +163,7 @@ def main():
             shutil.copyfile(repo/'target/debug/examples/desktop_settings_acceptance',settings_example)
             settings_example.chmod(0o755)
             settings_result=run('runuser','-u',users[0],'--','env','GITHUB_ACTIONS=true','RUNNER_OS=Linux',
+                f'HOME=/home/{users[0]}',f'XDG_CONFIG_HOME=/home/{users[0]}/.config',
                 'XDG_CURRENT_DESKTOP=GNOME',f'XDG_RUNTIME_DIR=/run/user/23101',
                 'dbus-run-session','--',str(settings_example),check=False)
             if settings_result.returncode:
