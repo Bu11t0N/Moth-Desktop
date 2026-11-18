@@ -118,12 +118,16 @@ async fn real_vless_roundtrip_and_wrong_credential_failure() {
     // Only loopback sockets. No routes, DNS/firewall settings or Internet access.
     let endpoint = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let endpoint_port = endpoint.local_addr().unwrap().port();
+    let requests = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let received = requests.clone();
     let endpoint_task = tokio::spawn(async move {
         loop {
             let (mut socket, _) = endpoint.accept().await.unwrap();
+            let received = received.clone();
             tokio::spawn(async move {
                 let mut buf = [0; 1024];
                 let _ = socket.read(&mut buf).await;
+                received.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 let _=socket.write_all(b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await;
             });
         }
@@ -186,6 +190,7 @@ async fn real_vless_roundtrip_and_wrong_credential_failure() {
         );
     }
     for password in [None, Some("wrong-password")] {
+        let before = requests.load(std::sync::atomic::Ordering::SeqCst);
         let mut proxy = reqwest::Proxy::all(format!("http://127.0.0.1:{public_port}")).unwrap();
         if let Some(password) = password {
             proxy = proxy.basic_auth("moth", password);
@@ -193,17 +198,51 @@ async fn real_vless_roundtrip_and_wrong_credential_failure() {
         let response = reqwest::Client::builder()
             .no_proxy()
             .proxy(proxy)
+            .timeout(Duration::from_secs(5))
             .build()
             .unwrap()
             .get(&url)
             .send()
-            .await
-            .unwrap();
-        assert_eq!(
-            response.status(),
-            reqwest::StatusCode::PROXY_AUTHENTICATION_REQUIRED
-        );
+            .await;
+        // Windows may report the engine's authentication close as a reset
+        // instead of delivering its HTTP 407. Neither may reach the target.
+        match response {
+            Ok(response) => assert_eq!(
+                response.status(),
+                reqwest::StatusCode::PROXY_AUTHENTICATION_REQUIRED
+            ),
+            Err(error) => {
+                let mut cause: Option<&dyn std::error::Error> = Some(&error);
+                let mut reset = false;
+                while let Some(current) = cause {
+                    reset |= current
+                        .downcast_ref::<std::io::Error>()
+                        .is_some_and(|e| e.kind() == std::io::ErrorKind::ConnectionReset);
+                    cause = current.source();
+                }
+                assert!(
+                    reset,
+                    "authentication failed for an unexpected transport reason"
+                );
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(requests.load(std::sync::atomic::Ordering::SeqCst), before);
     }
+    let authorized = reqwest::Client::builder()
+        .no_proxy()
+        .proxy(
+            reqwest::Proxy::all(format!("http://127.0.0.1:{public_port}"))
+                .unwrap()
+                .basic_auth(&access.username, &access.password),
+        )
+        .timeout(Duration::from_secs(5))
+        .build()
+        .unwrap();
+    assert_eq!(
+        authorized.get(&url).send().await.unwrap().status(),
+        reqwest::StatusCode::NO_CONTENT
+    );
     let api = proxy_session
         .telemetry()
         .expect("Pinned sing-box must support measured traffic");
@@ -283,10 +322,13 @@ async fn native_families_use_verified_tls_and_authenticated_real_roundtrips() {
         ("tuic","tuic://00000000-0000-4000-8000-000000000001:synthetic@127.0.0.1:443?sni=protocol.fixture.moth.invalid&alpn=h3&congestion_control=cubic&udp_relay_mode=native"),
         ("anytls","anytls://synthetic@127.0.0.1:443?sni=protocol.fixture.moth.invalid"),
     ] {
-        let reservation=std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let port=reservation.local_addr().unwrap().port();
-        // QUIC protocols also need the UDP port. Keep both reserved until spawn.
-        let udp=std::net::UdpSocket::bind((std::net::Ipv4Addr::LOCALHOST,port)).unwrap();
+        // TCP and UDP have separate Windows exclusion ranges. Ask each socket
+        // allocator for a usable port and retain both reservations until spawn.
+        let (udp,reservation,port)=(0..128).find_map(|_|{
+            let udp=std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+            let port=udp.local_addr().unwrap().port();
+            std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST,port)).ok().map(|tcp|(udp,tcp,port))
+        }).expect("no common loopback TCP/UDP fixture port available");
         let mut inbound=serde_json::json!({"type":kind,"listen":"127.0.0.1","listen_port":port,"users":[{"name":"fixture","password":"synthetic"}],"tls":{"enabled":true,"certificate":[certificate],"key":[private_key]}});
         if kind=="hysteria2"{inbound["obfs"]=serde_json::json!({"type":"salamander","password":"fixture-obfs"});}
         if kind=="tuic"{inbound["users"][0]["uuid"]=serde_json::json!("00000000-0000-4000-8000-000000000001");inbound["tls"]["alpn"]=serde_json::json!(["h3"]);}
