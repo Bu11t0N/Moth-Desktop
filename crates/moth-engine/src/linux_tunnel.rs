@@ -425,7 +425,7 @@ impl EngineSet {
             upstream_engine,
             profile,
             address.ip(),
-            Some(&interface),
+            Some(interface),
             cfg!(target_os = "linux"),
         );
         let mut tun_config = moth_core::sing_box_tun_policy(&bridge, policy)

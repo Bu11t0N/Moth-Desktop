@@ -32,7 +32,10 @@ pub fn sing_box_tun_policy(
     dns["detour"] = json!("proxy");
     let mut bootstrap = crate::dns_server(&settings.bootstrap_dns)?;
     bootstrap["tag"] = json!("bootstrap");
-    bootstrap["detour"] = json!("direct");
+    // Upstream engines are already numerically pinned before TUN activation.
+    // This resolver bootstraps a hostname-based VPN DNS server, not the VPN
+    // endpoint; it can and must travel through the existing private bridge.
+    bootstrap["detour"] = json!("proxy");
     config["dns"] = json!({"servers":[dns,bootstrap],"final":"dns-remote","strategy":if settings.ipv6{"prefer_ipv4"}else{"ipv4_only"}});
     config["outbounds"]
         .as_array_mut()
@@ -80,4 +83,29 @@ pub fn xray_bridge_config(profile: &crate::Profile, bridge: &LocalBridge) -> Val
     let mut config = crate::xray_check_config(profile);
     config["inbounds"] = json!([{"tag":"moth-bridge","listen":"127.0.0.1","port":bridge.port,"protocol":"vless","settings":{"decryption":"none","clients":[{"id":bridge.credential.to_string()}]}}]);
     config
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn hostname_dns_bootstrap_has_no_direct_network_dependency() {
+        let bridge = LocalBridge {
+            port: 15491,
+            credential: Uuid::new_v4(),
+        };
+        let policy = crate::ConnectionSettings {
+            dns: "https://dns.example.com/dns-query".into(),
+            ..Default::default()
+        };
+        let config = sing_box_tun_policy(&bridge, &policy).unwrap();
+        assert_eq!(config["route"]["default_domain_resolver"], "bootstrap");
+        assert!(config["dns"]["servers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|s| s["detour"] == "proxy"));
+        assert_eq!(config["outbounds"][0]["server"], "127.0.0.1");
+        assert_eq!(config["outbounds"][0]["server_port"], bridge.port);
+    }
 }

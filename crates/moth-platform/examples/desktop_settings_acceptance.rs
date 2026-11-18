@@ -10,17 +10,24 @@ fn main() {
     #[cfg(windows)]
     unsafe {
         use windows_sys::Win32::Security::{
-            Authorization::ConvertStringSidToSidW, CheckTokenMembership,
+            CheckTokenMembership, CreateWellKnownSid, WinBuiltinAdministratorsSid,
         };
-        let text: Vec<u16> = "S-1-5-32-544".encode_utf16().chain(Some(0)).collect();
-        let mut sid = std::ptr::null_mut();
+        let mut sid = [0u32; 17];
+        let mut size = std::mem::size_of_val(&sid) as u32;
         let mut member = 1;
-        assert_ne!(ConvertStringSidToSidW(text.as_ptr(), &mut sid), 0);
         assert_ne!(
-            CheckTokenMembership(std::ptr::null_mut(), sid, &mut member),
+            CreateWellKnownSid(
+                WinBuiltinAdministratorsSid,
+                std::ptr::null_mut(),
+                sid.as_mut_ptr().cast(),
+                &mut size
+            ),
             0
         );
-        windows_sys::Win32::Foundation::LocalFree(sid);
+        assert_ne!(
+            CheckTokenMembership(std::ptr::null_mut(), sid.as_mut_ptr().cast(), &mut member),
+            0
+        );
         assert_eq!(member, 0, "An ordinary test account is required");
     }
     let exe = std::env::current_exe().unwrap();
