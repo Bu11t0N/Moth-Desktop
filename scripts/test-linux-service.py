@@ -162,9 +162,15 @@ def main():
             settings_example=root/'desktop-settings-acceptance'
             shutil.copyfile(repo/'target/debug/examples/desktop_settings_acceptance',settings_example)
             settings_example.chmod(0o755)
-            run('runuser','-u',users[0],'--','env','GITHUB_ACTIONS=true','RUNNER_OS=Linux',
+            settings_result=run('runuser','-u',users[0],'--','env','GITHUB_ACTIONS=true','RUNNER_OS=Linux',
                 'XDG_CURRENT_DESKTOP=GNOME',f'XDG_RUNTIME_DIR=/run/user/23101',
-                'dbus-run-session','--',str(settings_example))
+                'dbus-run-session','--',str(settings_example),check=False)
+            if settings_result.returncode:
+                # This fresh-account fixture emits fixed stage labels and
+                # static failures only; it never prints the ownership journal.
+                raise RuntimeError('Ordinary-user settings acceptance failed:\n'+
+                    settings_result.stdout.decode(errors='replace')[-2000:]+
+                    settings_result.stderr.decode(errors='replace')[-2000:])
             for source, destination in [(repo / "target/debug/moth-service", root / "moth-service"),
                                         (repo / ".local/engines/linux-x64/xray", root / "engines/xray"),
                                         (repo / ".local/engines/linux-x64/sing-box", root / "engines/sing-box")]:

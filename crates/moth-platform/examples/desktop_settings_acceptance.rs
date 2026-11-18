@@ -31,6 +31,7 @@ fn main() {
         assert_eq!(member, 0, "An ordinary test account is required");
     }
     let exe = std::env::current_exe().unwrap();
+    println!("Checking fresh login registration");
     assert!(
         !moth_platform::autostart::status(&exe, None)
             .unwrap()
@@ -38,6 +39,7 @@ fn main() {
         "Fresh test account required"
     );
     let change = moth_platform::autostart::set(true, &exe, None).unwrap();
+    println!("Checking registered login target");
     let owner = change.ownership().unwrap().to_owned();
     assert!(
         moth_platform::autostart::status(&exe, Some(&owner))
@@ -50,6 +52,7 @@ fn main() {
         "external-fixture"
     });
     let external = moth_platform::autostart::set(true, &other, Some(&owner)).unwrap();
+    println!("Checking foreign login registration preservation");
     assert!(moth_platform::autostart::set(false, &exe, Some(&owner)).is_err());
     assert!(
         moth_platform::autostart::status(&exe, Some(&owner))
@@ -64,6 +67,7 @@ fn main() {
             .registered
     );
     let journal = zeroize::Zeroizing::new(moth_platform::system_proxy::prepare(10808).unwrap());
+    println!("Checking owned system proxy application");
     let result = std::panic::catch_unwind(|| {
         moth_platform::system_proxy::apply(&journal).unwrap();
         assert!(
@@ -74,6 +78,7 @@ fn main() {
         // A second, externally changed port must survive restoration of the
         // first assignment; the second journal then restores the first.
         let changed = zeroize::Zeroizing::new(moth_platform::system_proxy::prepare(10809).unwrap());
+        println!("Checking foreign system proxy preservation");
         moth_platform::system_proxy::apply(&changed).unwrap();
         assert!(moth_platform::system_proxy::restore(&journal).is_err());
         assert!(
@@ -83,6 +88,7 @@ fn main() {
         );
         moth_platform::system_proxy::restore(&changed).unwrap();
     });
+    println!("Checking original system proxy restoration");
     moth_platform::system_proxy::restore(&journal).unwrap();
     assert!(
         !moth_platform::system_proxy::status(Some(&journal))

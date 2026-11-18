@@ -3,6 +3,9 @@ set -eu
 case "${1:-}" in
   remove)
     systemctl daemon-reload
+    # The packaged network-manager drop-ins are now gone; stopping this
+    # completed oneshot no longer propagates to the user's network manager.
+    deb-systemd-invoke stop moth-egress-guard.service >/dev/null
     deb-systemd-helper mask moth-desktop.service >/dev/null
     deb-systemd-helper mask moth-egress-guard.service >/dev/null
     ;;

@@ -9,7 +9,8 @@ case "${1:-}" in
     deb-systemd-invoke stop moth-desktop.service >/dev/null
     if [ "${1:-}" = remove ]; then
       /usr/lib/moth-desktop/moth-service --release-guard
-      deb-systemd-invoke stop moth-egress-guard.service >/dev/null
+      # Keep the completed oneshot active until dpkg removes the network-manager
+      # Requires drop-ins. Stopping it here can stop the user's networking too.
     fi
     ;;
 esac
