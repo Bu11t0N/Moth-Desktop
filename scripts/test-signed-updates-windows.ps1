@@ -35,6 +35,19 @@ try {
     $link='vless://{0}@127.0.0.1:{1}?encryption=none&security=none&type=tcp#Updater-retention' -f $identifier,$port
     $interface=(Get-NetRoute -DestinationPrefix '0.0.0.0/0' | Sort-Object RouteMetric | Select-Object -First 1).InterfaceAlias
     $config=@{log=@{loglevel='none'};inbounds=@(@{listen='127.0.0.1';port=$port;protocol='vless';settings=@{decryption='none';clients=@(@{id=$identifier})}});outbounds=@(@{protocol='freedom';settings=@{domainStrategy='UseIPv4';finalRules=@(@{action='allow'})};streamSettings=@{sockopt=@{interface=$interface}}})}
+    # Native downloads now traverse the authenticated private upstream even
+    # during TUN sessions. The CI HTTPS origin is loopback, which cannot be
+    # reached by the fixture's physical-interface-bound Internet outbound.
+    # Give only this synthetic origin its own loopback outbound; retain physical
+    # binding for real Internet verification so TUN cannot recurse into itself.
+    $fixtureOrigin=[Uri](Get-Content -LiteralPath (Join-Path $fixture 'provider-base') -Raw)
+    if($fixtureOrigin.Scheme -ne 'https' -or $fixtureOrigin.Host -ne 'localhost' -or $fixtureOrigin.Port -lt 1024){throw 'Invalid local HTTPS fixture origin.'}
+    $fixturePort=[string]$fixtureOrigin.Port
+    $config.outbounds+=@{tag='fixture-local';protocol='freedom';settings=@{domainStrategy='UseIPv4';finalRules=@(@{action='allow';ip=@('127.0.0.1/32');port=$fixturePort})}}
+    $config.routing=@{rules=@(
+        @{type='field';domain=@('full:localhost');port=$fixturePort;outboundTag='fixture-local'},
+        @{type='field';ip=@('127.0.0.1/32');port=$fixturePort;outboundTag='fixture-local'}
+    )}
     $serverConfig=Join-Path $fixture 'server.json'
     $config | ConvertTo-Json -Depth 12 -Compress | Set-Content -LiteralPath $serverConfig -Encoding utf8NoBOM
     $serverBinary=Join-Path $fixture 'xray-fixture.exe'
@@ -93,8 +106,12 @@ try {
         $deadline=[DateTime]::UtcNow.AddMinutes(12)
         $authorized=$false
         while (-not (Test-Path -LiteralPath (Join-Path $evidence 'result.json'))) {
-            if (-not $authorized -and $guiProcess.HasExited) { throw "Native GUI exited before update authorization: $($guiProcess.ExitCode)." }
             if (Test-Path -LiteralPath (Join-Path $evidence 'error.txt')) { throw (Get-Content -LiteralPath (Join-Path $evidence 'error.txt') -Raw) }
+            if (-not $authorized -and $guiProcess.HasExited) {
+                # The driver writes a fixed, credential-free reason before exit.
+                if (Test-Path -LiteralPath (Join-Path $evidence 'error.txt')) { throw (Get-Content -LiteralPath (Join-Path $evidence 'error.txt') -Raw) }
+                throw "Native GUI exited before update authorization: $($guiProcess.ExitCode)."
+            }
             $request=Join-Path $evidence 'privileged-request'
             if (-not $authorized -and (Test-Path -LiteralPath $request)) {
                 $identifier=(Get-Content -LiteralPath $request -Raw).Trim()
