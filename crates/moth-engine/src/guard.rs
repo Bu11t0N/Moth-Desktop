@@ -14,6 +14,8 @@ mod windows;
 use linux as platform;
 #[cfg(windows)]
 use windows as platform;
+#[cfg(all(windows, test))]
+pub(crate) use windows::DnsDropWatch;
 const STATE: &str = "egress-guard-v1.json";
 
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]

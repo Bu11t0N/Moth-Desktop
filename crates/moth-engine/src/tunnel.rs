@@ -497,10 +497,20 @@ mod acceptance {
                     "Direct TCP was not denied by WFP"
                 );
                 let dns = tokio::net::UdpSocket::bind("0.0.0.0:0").await.unwrap();
-                assert!(
-                    dns.send_to(&[0u8; 32], "1.1.1.1:53").await.is_err(),
-                    "Direct DNS socket was not denied by WFP"
-                );
+                let drops = guard::DnsDropWatch::begin().unwrap();
+                let _ = dns.send_to(&[0u8; 32], "1.1.1.1:53").await;
+                let deadline = Instant::now() + Duration::from_secs(5);
+                loop {
+                    if drops.observed(dns.local_addr().unwrap().port()).unwrap() {
+                        break;
+                    }
+                    assert!(
+                        Instant::now() < deadline,
+                        "No outbound DNS drop by Moth's ALE filter was observed"
+                    );
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
+                drop(drops);
                 let mut guarded = engines.connect_checked(&profile, url).await.unwrap();
                 assert!(guarded.alive());
                 let api = guarded.telemetry().expect("actual TUN telemetry");

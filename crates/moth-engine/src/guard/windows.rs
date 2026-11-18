@@ -537,3 +537,145 @@ pub(super) fn replace_file(source: &Path, destination: &Path) -> Result<(), Engi
     }
     Ok(())
 }
+
+/// CI-only WFP evidence. Winsock may queue a UDP send before asynchronous ALE
+/// authorization finishes; send_to success is not evidence of packet egress.
+/// This observer restores the previous BFE collection option on every exit.
+#[cfg(test)]
+pub(crate) struct DnsDropWatch {
+    engine: Engine,
+    previous: u32,
+    filter: u64,
+    started: u64,
+}
+#[cfg(test)]
+fn ticks() -> u64 {
+    let time = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap();
+    (time.as_secs() + 11_644_473_600) * 10_000_000 + u64::from(time.subsec_nanos() / 100)
+}
+#[cfg(test)]
+fn filetime(ticks: u64) -> FILETIME {
+    FILETIME {
+        dwLowDateTime: ticks as u32,
+        dwHighDateTime: (ticks >> 32) as u32,
+    }
+}
+#[cfg(test)]
+impl DnsDropWatch {
+    pub(crate) fn begin() -> Result<Self, EngineError> {
+        let engine = Engine::open()?;
+        let mut filter = std::ptr::null_mut();
+        unsafe {
+            check(FwpmFilterGetByKey0(engine.0, &key(1), &mut filter))?;
+        }
+        let id = unsafe { (*filter).filterId };
+        unsafe {
+            FwpmFreeMemory0((&mut filter as *mut *mut FWPM_FILTER0).cast());
+        }
+        let mut value = std::ptr::null_mut();
+        unsafe {
+            check(FwpmEngineGetOption0(
+                engine.0,
+                FWPM_ENGINE_COLLECT_NET_EVENTS,
+                &mut value,
+            ))?;
+        }
+        let previous = unsafe { (*value).Anonymous.uint32 };
+        unsafe {
+            FwpmFreeMemory0((&mut value as *mut *mut FWP_VALUE0).cast());
+        }
+        let enabled = FWP_VALUE0 {
+            r#type: FWP_UINT32,
+            Anonymous: FWP_VALUE0_0 { uint32: 1 },
+        };
+        unsafe {
+            check(FwpmEngineSetOption0(
+                engine.0,
+                FWPM_ENGINE_COLLECT_NET_EVENTS,
+                &enabled,
+            ))?;
+        }
+        Ok(Self {
+            engine,
+            previous,
+            filter: id,
+            started: ticks().saturating_sub(10_000_000),
+        })
+    }
+    pub(crate) fn observed(&self, source_port: u16) -> Result<bool, EngineError> {
+        let template = FWPM_NET_EVENT_ENUM_TEMPLATE0 {
+            startTime: filetime(self.started),
+            endTime: filetime(ticks()),
+            ..Default::default()
+        };
+        let mut enumeration = std::ptr::null_mut();
+        unsafe {
+            check(FwpmNetEventCreateEnumHandle0(
+                self.engine.0,
+                &template,
+                &mut enumeration,
+            ))?;
+        }
+        let result = (|| {
+            for _ in 0..16 {
+                let mut entries = std::ptr::null_mut();
+                let mut count = 0;
+                unsafe {
+                    check(FwpmNetEventEnum0(
+                        self.engine.0,
+                        enumeration,
+                        256,
+                        &mut entries,
+                        &mut count,
+                    ))?;
+                }
+                let mut found = false;
+                for i in 0..count as usize {
+                    let event = unsafe { &**entries.add(i) };
+                    if event.r#type == FWPM_NET_EVENT_TYPE_CLASSIFY_DROP
+                        && event.header.ipVersion == FWP_IP_VERSION_V4
+                        && event.header.ipProtocol == 17
+                        && event.header.remotePort == 53
+                        && event.header.localPort == source_port
+                        && unsafe { event.header.Anonymous2.remoteAddrV4 } == 0x01010101
+                    {
+                        let drop = unsafe { event.Anonymous.classifyDrop };
+                        if !drop.is_null() && unsafe { (*drop).filterId } == self.filter {
+                            found = true;
+                        }
+                    }
+                }
+                unsafe {
+                    FwpmFreeMemory0((&mut entries as *mut *mut *mut FWPM_NET_EVENT0).cast());
+                }
+                if found {
+                    return Ok(true);
+                }
+                if count < 256 {
+                    break;
+                }
+            }
+            Ok(false)
+        })();
+        unsafe {
+            FwpmNetEventDestroyEnumHandle0(self.engine.0, enumeration);
+        }
+        result
+    }
+}
+#[cfg(test)]
+impl Drop for DnsDropWatch {
+    fn drop(&mut self) {
+        let value = FWP_VALUE0 {
+            r#type: FWP_UINT32,
+            Anonymous: FWP_VALUE0_0 {
+                uint32: self.previous,
+            },
+        };
+        unsafe {
+            FwpmEngineSetOption0(self.engine.0, FWPM_ENGINE_COLLECT_NET_EVENTS, &value);
+        }
+    }
+}
