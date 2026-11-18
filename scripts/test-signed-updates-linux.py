@@ -11,6 +11,7 @@ import sys
 import tempfile
 import time
 import uuid
+from urllib.parse import urlsplit
 
 
 def run(*args,check=True):
@@ -46,7 +47,14 @@ def main():
             listener.bind(('127.0.0.1',0));port=listener.getsockname()[1]
         identifier=str(uuid.uuid4())
         link=f'vless://{identifier}@127.0.0.1:{port}?encryption=none&security=none&type=tcp#Updater-retention'
-        configuration={'log':{'loglevel':'none'},'inbounds':[{'listen':'127.0.0.1','port':port,'protocol':'vless','settings':{'decryption':'none','clients':[{'id':identifier}]}}],'outbounds':[{'protocol':'freedom','settings':{},'streamSettings':{'sockopt':{'mark':0x4d4f5448}}}]}
+        origin=urlsplit((fixture/'provider-base').read_text(encoding='utf-8').strip())
+        if origin.scheme!='https' or origin.hostname!='localhost' or not origin.port or origin.port<1024:
+            raise RuntimeError('Invalid local HTTPS fixture origin')
+        # Native downloads now traverse this VLESS upstream. Its default
+        # private-address policy must allow only the synthetic HTTPS origin;
+        # keep the protected physical-routing mark for Internet verification.
+        settings={'domainStrategy':'UseIPv4','finalRules':[{'action':'allow','ip':['127.0.0.1/32'],'port':str(origin.port)}]}
+        configuration={'log':{'loglevel':'none'},'inbounds':[{'listen':'127.0.0.1','port':port,'protocol':'vless','settings':{'decryption':'none','clients':[{'id':identifier}]}}],'outbounds':[{'protocol':'freedom','settings':settings,'streamSettings':{'sockopt':{'mark':0x4d4f5448}}}]}
         (fixture/'server.json').write_text(json.dumps(configuration))
         shutil.copyfile('/usr/lib/moth-desktop/engines/xray',fixture/'xray-fixture')
         (fixture/'xray-fixture').chmod(0o755)
