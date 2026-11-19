@@ -2,7 +2,10 @@
   "bundle": {
     "resources": {
       "../.local/engines/win32-x64/xray.exe": "engines/xray.exe",
-      "../.local/engines/win32-x64/sing-box.exe": "engines/sing-box.exe"
+      "../.local/engines/win32-x64/sing-box.exe": "engines/sing-box.exe",
+      "../.local/engines/win32-x64/mihomo.exe": "engines/mihomo.exe",
+      "../.local/engines/win32-x64/GeoIP.dat": "engines/GeoIP.dat",
+      "../.local/engines/win32-x64/GeoSite.dat": "engines/GeoSite.dat"
     }
   }
 }

@@ -7,6 +7,7 @@ import {guardHtml,guardBanner,bindGuard,refreshGuard,guardEnabled,guardVerified,
 import { applyPreferences, observeLocalization, currentLanguage } from "./preferences";
 import { networkSettingsHtml, bindNetworkSettings } from "./settings";
 import { backupHtml, bindBackup } from "./backup";
+import { bindClash, clashDialog, clashPanel, openClashPreview, looksLikeClash } from "./clash";
 import { libraryHtml, bindLibrary } from "./library";
 import "./style.css";
 import { listen } from "@tauri-apps/api/event";
@@ -126,7 +127,7 @@ function render() {
         .join("")}</nav>
       <div class="sidebar-bottom"><span class="version-dot"></span> Версия для разработки<small>${escapeHtml(state.version)} · ${linux ? "Linux x86_64" : "Windows x64"}</small></div>
     </aside>
-    <main><header><div class="breadcrumb">MOTH DESKTOP <span>/</span> ${page === "home" ? "ОБЗОР" : page === "servers" ? "СЕРВЕРЫ" : page === "activity" ? "СТАТИСТИКА" : page === "diagnostics" ? "ДИАГНОСТИКА" : page === "about" ? "О ПРИЛОЖЕНИИ" : "НАСТРОЙКИ"}</div><span class="build-badge">0.3.5</span></header>
+    <main><header><div class="breadcrumb">MOTH DESKTOP <span>/</span> ${page === "home" ? "ОБЗОР" : page === "servers" ? "СЕРВЕРЫ" : page === "activity" ? "СТАТИСТИКА" : page === "diagnostics" ? "ДИАГНОСТИКА" : page === "about" ? "О ПРИЛОЖЕНИИ" : "НАСТРОЙКИ"}</div><span class="build-badge">0.3.6</span></header>
     ${!native ? '<div class="preview-note">Просмотр интерфейса в браузере. Профили и подключение доступны только в настольном приложении.</div>' : ""}
     ${error ? `<div class="error" role="alert">${escapeHtml(error)}</div>` : ""}
     ${guardBanner()}<section class="content">
@@ -145,9 +146,9 @@ function render() {
       <div class="bottom-note">${icon("shield")}<p><strong>Хранение профилей</strong><span>Профили защищены хранилищем учётной записи. Без аналитики и облачной синхронизации.</span></p></div>
     `
         : page === "servers"
-          ? libraryHtml(state, {busy, active, probingId, results:probeResults, icon:icon("servers")})
+          ? libraryHtml(state, {busy, active, probingId, results:probeResults, icon:icon("servers")}) + clashPanel(state, active, vpn.ownedByCaller)
           : page === "activity" ? trafficHtml()
-          : page === "diagnostics" ? `${diagnosticsHtml()}<article class="settings-card"><h2>Служба VPN</h2><div class="setting"><span>Системный VPN</span><strong>${state.capabilities.systemTunnel && serviceAvailable && serviceHealth?.protocol === 2 && serviceHealth.systemTunnel && serviceHealth.engines.length > 0 && serviceHealth.engines.every((e) => e.available) ? "Доступен через службу" : "Не подтверждён"}</strong></div><p class="muted" role="status" aria-label="Состояние службы">${escapeHtml(serviceMessage)}</p>${serviceHealth ? `<div class="setting"><span>Протокол управления</span><strong>${serviceHealth.protocol === 2 ? "Совместим · IPC 2" : "Несовместим"}</strong></div>${serviceHealth.engines.map((e) => `<div class="setting"><span>Ядро службы: ${escapeHtml(e.name)}</span><strong>${escapeHtml(e.version)} · ${e.available ? "Проверено" : "Недоступно"}</strong></div>`).join("")}` : ""}<button class="button subtle service-refresh" ${serviceChecking ? "disabled" : ""}>${serviceChecking ? "Проверяем…" : "Проверить связь со службой"}</button><p class="muted">Для VPN нужна служба Moth с протоколом IPC 2 (0.3.1–0.3.5). ${installationHint}</p></article>`
+          : page === "diagnostics" ? `${diagnosticsHtml()}<article class="settings-card"><h2>Служба VPN</h2><div class="setting"><span>Системный VPN</span><strong>${state.capabilities.systemTunnel && serviceAvailable && serviceHealth?.protocol === 2 && serviceHealth.systemTunnel && serviceHealth.engines.length > 0 && serviceHealth.engines.every((e) => e.available) ? "Доступен через службу" : "Не подтверждён"}</strong></div><p class="muted" role="status" aria-label="Состояние службы">${escapeHtml(serviceMessage)}</p>${serviceHealth ? `<div class="setting"><span>Протокол управления</span><strong>${serviceHealth.protocol === 2 ? "Совместим · IPC 2" : "Несовместим"}</strong></div>${serviceHealth.engines.map((e) => `<div class="setting"><span>Ядро службы: ${escapeHtml(e.name)}</span><strong>${escapeHtml(e.version)} · ${e.available ? "Проверено" : "Недоступно"}</strong></div>`).join("")}` : ""}<button class="button subtle service-refresh" ${serviceChecking ? "disabled" : ""}>${serviceChecking ? "Проверяем…" : "Проверить связь со службой"}</button><p class="muted">Для VPN нужна служба Moth с протоколом IPC 2 (0.3.1–0.3.6). ${installationHint}</p></article>`
           : page === "about" ? aboutHtml(state)
           : `<div class="page-heading"><div><p class="eyebrow">ПАРАМЕТРЫ</p><h1>Настройки</h1><p class="muted">Соединение, защита и поведение приложения</p></div></div>
       ${autostartHtml()}${proxyHtml(state)}${guardHtml()}${networkSettingsHtml(state)}${backupHtml()}`
@@ -156,6 +157,13 @@ function render() {
     <dialog id="import-dialog"><form id="import-form"><div class="dialog-heading"><div><p class="eyebrow">ИМПОРТ</p><h2>Добавить серверы</h2></div><button type="button" class="close" aria-label="Закрыть">×</button></div><label for="server-links">Ссылки серверов</label><textarea id="server-links" required rows="6" autocomplete="off" spellcheck="false" placeholder="vless://… или trojan://…"></textarea><p class="dialog-help">По одной ссылке на строку, Base64-список, Clash YAML или поддерживаемый JSON. Для URL провайдера используйте «Добавить подписку».</p><p id="import-error" class="dialog-error" role="alert"></p><div class="dialog-actions"><button type="button" class="button subtle close">Отмена</button><button class="button" type="submit">Импортировать</button></div></form></dialog>
     <dialog id="delete-dialog"><form method="dialog"><h2>Удалить сервер?</h2><p>Он исчезнет из локального списка.</p><div class="dialog-actions"><button class="button subtle" value="cancel">Отмена</button><button class="button" value="delete">Удалить</button></div></form></dialog>`;
   applyPreferences(app,state.settings);
+  app.insertAdjacentHTML("beforeend", clashDialog());
+  bindClash(app, (next) => { state = next; page = "servers"; render(); }, (next) => {
+    ++vpnRevision;
+    vpn = next;
+    updateVpnMessage();
+    render();
+  });
   bindNetworkSettings(app,state,(next)=>{state=next;render();},render);
   bindGuard(app,render);
   bindTraffic(app);
@@ -289,8 +297,13 @@ function render() {
     const submit = dialog.querySelector<HTMLButtonElement>("[type=submit]")!;
     submit.disabled = true;
     try {
+      const text = dialog.querySelector<HTMLTextAreaElement>("textarea")!.value;
+      if (native && looksLikeClash(text)) {
+        await openClashPreview(app, {text}, dialog);
+        return;
+      }
       state = await call("import_servers", {
-        text: dialog.querySelector<HTMLTextAreaElement>("textarea")!.value,
+        text,
       });
       dialog.close();
       page = "servers";
@@ -300,7 +313,7 @@ function render() {
     } finally {
       busy = false;
       submit.disabled = false;
-      if (!dialog.open) render();
+      if (!dialog.open && !app.querySelector<HTMLDialogElement>("#clash-preview")?.open) render();
     }
   };
   app

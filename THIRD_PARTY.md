@@ -49,3 +49,22 @@ See [regeneration and exact source links](docs/DEPENDENCY-NOTICES.md).
 The embedded amd64 Wintun DLL matches official Wintun 0.14.1: SHA-256 e5da8447dc2c320edc0fc52fa01885c103de8c118481f683643cacc3220dafce. Official archive SHA-256: 07c256185d6ee3652e09fa55c0b673e2624b565e02c4b9091c79ca7d2f24ef51 (https://www.wintun.net/builds/wintun-0.14.1.zip). The prebuilt-binary license is preserved in licenses/Wintun-0.14.1.txt. Git blob aee04e77bfbd6601adbcd5a46435f059e31cf6e4 matches sing-tun v0.7.13 internal/wintun/amd64/wintun.dll.
 
 Version 0.3.2 enables Tauri tray-icon support and adds tauri-plugin-single-instance 2.5.5 (https://github.com/tauri-apps/plugins-workspace) and tray-icon 0.25.1 (https://github.com/tauri-apps/tray-icon). Both are MIT OR Apache-2.0; their license texts are preserved in licenses/single-instance-* and licenses/tray-icon-*. Cargo.lock pins their resolved versions.
+
+## Policy profile assets
+
+Mihomo 1.19.33 is distributed as a separate, unmodified upstream
+executable under GPL-3.0. Its [corresponding source and build definitions](https://github.com/MetaCubeX/mihomo/tree/v1.19.33),
+[source archive](https://github.com/MetaCubeX/mihomo/archive/refs/tags/v1.19.33.tar.gz)
+and [upstream binaries](https://github.com/MetaCubeX/mihomo/releases/tag/v1.19.33)
+are available from MetaCubeX. The bundled
+`licenses/Policy-engine-notices.tar.gz` records the Go module versions,
+checksums, Go runtime notices and dependency license texts for the exact
+Windows and Linux executables.
+
+GeoIP data comes from [V2Fly GeoIP 202611080027](https://github.com/v2fly/geoip/releases/tag/202611080027)
+under CC BY-SA 4.0 and includes [IP Geolocation by DB-IP](https://db-ip.com/)
+under CC BY 4.0. GeoSite data comes from
+[V2Fly domain-list-community 20261118141523](https://github.com/v2fly/domain-list-community/releases/tag/20261118141523)
+under MIT. Moth redistributes both datasets without modification under
+the runtime filenames GeoIP.dat and GeoSite.dat. Their hashes and origins
+are in `policy-assets.lock.json`.

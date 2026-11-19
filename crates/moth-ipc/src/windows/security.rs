@@ -220,6 +220,20 @@ pub fn validate_installation(root: &Path) -> Result<(), IpcError> {
         }
         check_acl(&path)?;
     }
+    // Legacy installations do not have these optional policy assets. If
+    // present, they must meet the same ACL and reparse checks as other engines.
+    for relative in [
+        "engines/mihomo.exe",
+        "engines/GeoIP.dat",
+        "engines/GeoSite.dat",
+    ] {
+        let path = root.join(relative);
+        match std::fs::symlink_metadata(&path) {
+            Ok(meta) if meta.is_file() && meta.file_attributes() & 0x400 == 0 => check_acl(&path)?,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            _ => return Err(IpcError::AccessDenied),
+        }
+    }
     Ok(())
 }
 pub(crate) fn check_acl(path: &Path) -> Result<(), IpcError> {

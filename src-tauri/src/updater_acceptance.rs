@@ -103,9 +103,9 @@ async fn check(app: &tauri::AppHandle) -> Result<(), &'static str> {
         return Err("profile contents changed");
     }
     let expected = if restarted && expectation == "success" {
-        "0.3.5"
+        "0.3.6"
     } else {
-        "0.3.4"
+        "0.3.5"
     };
     if env!("CARGO_PKG_VERSION") != expected {
         return Err("restarted GUI version");

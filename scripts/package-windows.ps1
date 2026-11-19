@@ -30,6 +30,10 @@ foreach($core in @('xray','sing-box')){
     $expected=$pins.engines.$core.platforms.'win32-x64'.binarySha256
     if((Get-FileHash -LiteralPath (Join-Path $package "engines/$core.exe") -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected){throw 'Packaged core checksum mismatch'}
 }
+$policyPins=Get-Content -LiteralPath (Join-Path $repo 'policy-assets.lock.json') -Raw | ConvertFrom-Json
+foreach($asset in @($policyPins.platforms.'win32-x64')+@($policyPins.geo)){
+    if((Get-FileHash -LiteralPath (Join-Path $package "engines/$($asset.file)") -Algorithm SHA256).Hash.ToLowerInvariant() -ne $asset.sha256){throw 'Packaged policy asset checksum mismatch'}
+}
 
 $hashes=@(Get-ChildItem -LiteralPath $package -File -Recurse | Sort-Object FullName | ForEach-Object {
     $relative=$_.FullName.Substring($package.Length+1).Replace('\','/')

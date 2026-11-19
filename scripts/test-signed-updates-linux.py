@@ -41,7 +41,7 @@ def main():
         os.environ['MOTH_PROVIDER_BASE']=(fixture/'provider-base').read_text(encoding='utf-8').strip()
         run((fixture/'provider-test-path').read_text(encoding='utf-8').strip(),'native_provider_fixture','--ignored')
         os.environ.pop('MOTH_PROVIDER_BASE',None)
-        run('apt-get','install','--yes','--no-install-recommends',str(fixture/'baseline/Moth-0.3.4-linux-x64.deb'))
+        run('apt-get','install','--yes','--no-install-recommends',str(fixture/'baseline/Moth-0.3.5-linux-x64.deb'))
         installed=True
         with socket.socket() as listener:
             listener.bind(('127.0.0.1',0));port=listener.getsockname()[1]
@@ -121,7 +121,7 @@ def main():
                     if not (job/'installing.event').exists(): raise RuntimeError('Actual package installation was not reached')
                     if case=='rollback' and (not (job/'rollingBack.event').exists() or not Path('/run/moth-update-acceptance-poststart').exists()):
                         raise RuntimeError('Rollback did not reach the forced post-start failure')
-                expected='0.3.5' if case=='success' else '0.3.4'
+                expected='0.3.6' if case=='success' else '0.3.5'
                 health=json.loads(run('/usr/lib/moth-desktop/moth-service','--status').stdout)
                 if health['version']!=expected or not all(engine['available'] for engine in health['engines']):
                     raise RuntimeError('Installed coordinated component versions are not healthy')

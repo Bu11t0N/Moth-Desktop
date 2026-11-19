@@ -6,7 +6,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, Manager};
 use uuid::Uuid;
 
-fn now() -> u64 {
+pub(crate) fn now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -61,6 +61,16 @@ async fn download(
     device: Uuid,
     proxy: Option<moth_ipc::DownloadProxy>,
 ) -> Result<(Vec<moth_core::Profile>, Quota), String> {
+    let (document, quota) = download_document(source, device, proxy).await?;
+    let profiles = moth_core::import_links(&document).map_err(|e| e.to_string())?;
+    Ok((profiles, quota))
+}
+
+pub(crate) async fn download_document(
+    source: &Subscription,
+    device: Uuid,
+    proxy: Option<moth_ipc::DownloadProxy>,
+) -> Result<(zeroize::Zeroizing<String>, Quota), String> {
     let original =
         moth_core::subscription_url(&source.url, source.allow_http).map_err(str::to_owned)?;
     let mut destination = original.clone();
@@ -147,16 +157,26 @@ async fn download(
             }
             body.extend_from_slice(&chunk);
         }
-        let text = std::str::from_utf8(&body).map_err(|_| "Ответ подписки должен быть в UTF-8")?;
-        // Atomic parser: an unsupported member rejects the entire refresh.
-        let profiles = moth_core::import_links(text).map_err(|e| e.to_string())?;
-        return Ok((profiles, quota));
+        let text = String::from_utf8(body).map_err(|_| "Ответ подписки должен быть в UTF-8")?;
+        return Ok((zeroize::Zeroizing::new(text), quota));
     }
     Err("Слишком много перенаправлений".into())
 }
 
 #[tauri::command]
 pub async fn refresh_subscription(id: Uuid, app: tauri::AppHandle) -> Result<Snapshot, String> {
+    let clash = app
+        .state::<AppState>()
+        .library
+        .lock()
+        .map_err(|_| "Хранилище недоступно")?
+        .clash_policies
+        .iter()
+        .find(|p| p.subscription == Some(id))
+        .map(|p| p.id);
+    if let Some(policy) = clash {
+        return crate::clash::refresh(policy, true, app).await;
+    }
     crate::diagnostics::record(&app, crate::diagnostics::Code::SubscriptionStarted);
     let state = app.state::<AppState>();
     let _gate = state
@@ -293,6 +313,7 @@ pub fn schedule(app: tauri::AppHandle) {
             for id in due {
                 let _ = refresh_subscription(id, app.clone()).await;
             }
+            crate::clash::refresh_due(&app).await;
         }
     });
 }

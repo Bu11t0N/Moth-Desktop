@@ -49,6 +49,7 @@ jobs:
       - name: Build native tray acceptance GUI (debug only)
         run: npm run desktop:build -- --debug --no-bundle
       - run: cargo build -p moth-ipc --example maintenance_acceptance --locked
+      - run: cargo build -p moth-ipc --example clash_policy_acceptance --locked
       - run: cargo build -p moth-platform --example desktop_settings_acceptance --locked
       - run: cargo build -p moth-engine --example proxy_access_acceptance --locked
       - name: Windows SCM install, authenticated health, stop/start and removal
@@ -89,7 +90,7 @@ jobs:
         run: |
           $baselines=Join-Path $env:RUNNER_TEMP ('moth-nsis-baselines-'+[Guid]::NewGuid().ToString('N'))
           ./scripts/fetch-upgrade-baselines.ps1 -OutputDirectory $baselines
-          ./scripts/test-installer-windows.ps1 -Installer target/installers/Moth-${{ needs.windows.outputs.version }}-windows-x64-setup.exe -PackageDirectory target/installer-package -Baseline031Directory (Join-Path $baselines 'Moth-0.3.1-windows-x64') -Baseline032Directory (Join-Path $baselines 'Moth-0.3.2-windows-x64') -Baseline033Directory (Join-Path $baselines 'Moth-0.3.3-windows-x64') -Baseline034Directory (Join-Path $baselines 'Moth-0.3.4-windows-x64')
+          ./scripts/test-installer-windows.ps1 -Installer target/installers/Moth-${{ needs.windows.outputs.version }}-windows-x64-setup.exe -PackageDirectory target/installer-package -Baseline031Directory (Join-Path $baselines 'Moth-0.3.1-windows-x64') -Baseline032Directory (Join-Path $baselines 'Moth-0.3.2-windows-x64') -Baseline033Directory (Join-Path $baselines 'Moth-0.3.3-windows-x64') -Baseline034Directory (Join-Path $baselines 'Moth-0.3.4-windows-x64') -Baseline035Directory (Join-Path $baselines 'Moth-0.3.5-windows-x64')
       - name: Read and capture actual installer and uninstaller pages
         shell: pwsh
         run: |
@@ -123,7 +124,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
-      - run: node scripts/fetch-engines.mjs
+      - run: npm run engines:fetch
       - run: python3 scripts/license-notices.py
       - name: Secret Service acceptance dependencies
         run: sudo apt-get update && sudo apt-get install -y nftables gnome-keyring dbus-x11 dnsutils gsettings-desktop-schemas libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf xvfb xfwm4 xfce4-panel
@@ -131,6 +132,7 @@ jobs:
       - run: cargo clippy -p moth-core -p moth-platform -p moth-engine -p moth-ipc -p moth-service -p moth-update --all-targets --locked -- -D warnings
       - run: cargo build -p moth-service --locked
       - run: cargo build -p moth-ipc --example maintenance_acceptance --locked
+      - run: cargo build -p moth-ipc --example clash_policy_acceptance --locked
       - run: cargo build -p moth-platform --example desktop_settings_acceptance --locked
       - run: cargo build -p moth-engine --example proxy_access_acceptance --locked
       - run: npm ci

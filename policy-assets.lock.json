@@ -1,0 +1,32 @@
+{
+  "version": "1.19.33",
+  "source": "https://github.com/MetaCubeX/mihomo/tree/v1.19.33",
+  "license": "GPL-3.0",
+  "platforms": {
+    "win32-x64": {
+      "url": "https://github.com/MetaCubeX/mihomo/releases/download/v1.19.33/mihomo-windows-amd64-v1-v1.19.33.zip",
+      "archiveSha256": "fb0b960eff568459502d4ebe53e9cca203053d86ec9024fe935f19615d74d9aa",
+      "member": "mihomo-windows-amd64-v1.exe",
+      "file": "mihomo.exe",
+      "sha256": "a4fbf2b8bc2b5416ce2d0d392ac59f2e0a234ea4fcf635b66bd21e62ea9641b9"
+    },
+    "linux-x64": {
+      "url": "https://github.com/MetaCubeX/mihomo/releases/download/v1.19.33/mihomo-linux-amd64-v1-v1.19.33.gz",
+      "archiveSha256": "8ec92e7b2fdc6b853ba00156bab7e4e965c8b0d843b8c4ac8ab98795f02ad524",
+      "file": "mihomo",
+      "sha256": "19cbe7ba1523a92ed2d0a30716ea093de57db05b7844db23de2b9c21fd7a1afa"
+    }
+  },
+  "geo": [
+    {
+      "file": "GeoIP.dat",
+      "url": "https://github.com/v2fly/geoip/releases/download/202611080027/geoip.dat",
+      "sha256": "eedb24b3b9fcba27e06b92c0428dab90d9496083091ae4cf39e11387fd99d0e2"
+    },
+    {
+      "file": "GeoSite.dat",
+      "url": "https://github.com/v2fly/domain-list-community/releases/download/20261118141523/dlc.dat",
+      "sha256": "a033da583af17f15c9743f0b29aa5c073e9c1b8018a99ab4e69bc9ed5248a086"
+    }
+  ]
+}

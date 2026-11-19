@@ -51,6 +51,11 @@ def main():
     if (digest("engines.lock.json") != engines["engineLockSha256"]
             or hashlib.sha256(archive.read_bytes()).hexdigest() != engines["archiveSha256"]):
         raise RuntimeError("Pinned engine notices need regeneration")
+    policy = json.loads((ROOT / "licenses/policy-engine-inventory.json").read_text())
+    if (digest("policy-assets.lock.json") != policy["lockSha256"]
+            or hashlib.sha256((ROOT / "licenses/Policy-engine-notices.tar.gz").read_bytes()).hexdigest()
+               != policy["archiveSha256"]):
+        raise RuntimeError("Policy engine notices need regeneration")
     print("Locked Rust, JavaScript and pinned engine notices match their reviewed inputs.")
 
 

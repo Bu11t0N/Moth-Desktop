@@ -828,3 +828,18 @@ input:focus-visible,select:focus-visible,summary:focus-visible {outline:2px soli
 .data-table table {border-collapse:collapse;width:100%;font-size:12px}
 .data-table th,.data-table td {padding:10px;text-align:left;border-bottom:1px solid var(--border,#455147);overflow-wrap:anywhere;max-width:280px}
 @media (prefers-reduced-motion:reduce) {*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+.clash-preview-list {
+  max-height: min(44vh, 25rem);
+  overflow: auto;
+  overflow-wrap: anywhere;
+  margin-bottom: 0.75rem;
+}
+.clash-preview-list details {
+  margin: 0.45rem 0;
+}
+[data-clash-file-form] {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}

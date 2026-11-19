@@ -174,7 +174,9 @@ def main():
                     settings_result.stderr.decode(errors='replace')[-2000:])
             for source, destination in [(repo / "target/debug/moth-service", root / "moth-service"),
                                         (repo / ".local/engines/linux-x64/xray", root / "engines/xray"),
-                                        (repo / ".local/engines/linux-x64/sing-box", root / "engines/sing-box")]:
+                                        (repo / ".local/engines/linux-x64/sing-box", root / "engines/sing-box"),
+                                        *((repo / ".local/engines/linux-x64" / asset, root / "engines" / asset)
+                                          for asset in ("mihomo", "GeoIP.dat", "GeoSite.dat"))]:
                 shutil.copyfile(source, destination)
                 destination.chmod(0o755)
             shutil.copyfile(repo / "packaging/linux/moth-desktop.service", unit)
@@ -313,6 +315,16 @@ def main():
             run('ip','addr','del','10.231.91.1/30','dev','moth-ci-host')
             run('ip','-n','moth-ci-sink','addr','del','10.231.91.2/30','dev','moth-ci-peer')
             restored()
+            clash_example=root/'clash-policy-acceptance'
+            shutil.copyfile(repo/'target/debug/examples/clash_policy_acceptance',clash_example)
+            clash_example.chmod(0o755)
+            def clash_check(*arguments):
+                outcome=run('runuser','-u',users[0],'--','env','GITHUB_ACTIONS=true',str(clash_example),*arguments,check=False)
+                if outcome.returncode:
+                    raise RuntimeError("Clash fixture failed: "+outcome.stderr.decode(errors='replace')[-1600:])
+                print(outcome.stdout.decode(errors='replace').strip(),flush=True)
+            clash_check()
+            restored()
             # Persistent nftables acceptance against previously reachable real
             # IPv4/IPv6 peers. No missing-route timeout is counted as a pass.
             connected()
@@ -327,6 +339,7 @@ def main():
             if cli(users[1],"--guard-off").get("code")!="notOwner":
                 raise RuntimeError("Another user released the guard")
             cli(users[0],"--disconnect")
+            clash_check("guard")
             def blocked():
                 for destination in ("10.231.90.2","fd24:4d4f:5448::2"):
                     host=f"[{destination}]" if ":" in destination else destination

@@ -148,6 +148,8 @@ impl Profile {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Library {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub clash_policies: Vec<crate::SavedClashPolicy>,
     #[serde(default)]
     pub proxy_preferences: crate::ProxyPreferences,
     #[serde(default)]
@@ -175,6 +177,7 @@ pub struct Library {
 impl Default for Library {
     fn default() -> Self {
         Self {
+            clash_policies: Vec::new(),
             proxy_preferences: Default::default(),
             system_proxy_ownership: None,
             proxy_session_requested: false,
@@ -225,6 +228,19 @@ impl Library {
         before != self.profiles.len()
     }
     pub fn validate(&self) -> Result<(), &'static str> {
+        let mut ids = std::collections::HashSet::new();
+        let mut policy_sources = std::collections::HashSet::new();
+        if self.clash_policies.len() > 8
+            || self.clash_policies.iter().any(|p| {
+                !p.valid()
+                    || !ids.insert(p.id)
+                    || p.subscription.is_some_and(|id| {
+                        !policy_sources.insert(id) || !self.subscriptions.iter().any(|s| s.id == id)
+                    })
+            })
+        {
+            return Err("Invalid saved Clash policies");
+        }
         self.proxy_preferences.validate()?;
         if self
             .system_proxy_ownership

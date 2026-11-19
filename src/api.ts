@@ -11,6 +11,7 @@ export type Profile = {
   security: string;
 };
 export type Snapshot = {
+  clashPolicies?: { id: string; name: string; subscription: string | null; refreshedAt: number; refreshFailed: boolean }[];
   proxyPreferences?: ProxyPreferences;
   settings?: ConnectionSettings;
   subscriptions?: Subscription[];
@@ -48,7 +49,7 @@ export const native = isTauri();
 export const empty: Snapshot = {
   profiles: [],
   selected: null,
-  version: "0.3.5",
+  version: "0.3.6",
   engines: [],
   capabilities: {
     platform: "browser",

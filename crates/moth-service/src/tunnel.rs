@@ -1,3 +1,4 @@
+use moth_engine::ConnectionSource;
 use moth_ipc::{ErrorCode, Reply, TunnelPhase, TunnelState};
 use std::{
     sync::atomic::{AtomicU64, Ordering},
@@ -72,7 +73,7 @@ impl Controller {
                     .session
                     .as_mut()
                     .map_or(moth_ipc::NativeRoute::Blocked, |s| {
-                        if s.alive() {
+                        if s.alive() && s.allows_private_downloads() {
                             moth_ipc::NativeRoute::PrivateProxy(s.subscription_proxy())
                         } else {
                             moth_ipc::NativeRoute::Blocked
@@ -263,7 +264,7 @@ impl Controller {
         }
         match state.session.as_mut() {
             Some(session) => {
-                if session.alive() {
+                if session.alive() && session.allows_private_downloads() {
                     Reply::SubscriptionProxy(session.subscription_proxy())
                 } else {
                     Reply::Failure {
@@ -369,7 +370,7 @@ impl Controller {
         };
         self.connect_expected(
             caller,
-            profile,
+            ConnectionSource::Profile(profile),
             engines,
             policy,
             candidates,
@@ -381,10 +382,83 @@ impl Controller {
         )
         .await
     }
+    pub async fn connect_clash(
+        &self,
+        caller: &str,
+        profile: &moth_core::ClashPolicy,
+        engines: &moth_engine::EngineSet,
+        settings: &moth_core::ConnectionSettings,
+        plan: moth_engine::SessionPlan,
+    ) -> Reply {
+        if profile.validate_connection(settings, plan.mode).is_err() {
+            return Reply::Failure {
+                code: ErrorCode::InvalidProfile,
+            };
+        }
+        let expected = {
+            let state = self.inner.lock().await;
+            if state.owner.as_deref().is_some_and(|owner| owner != caller) {
+                return Reply::Failure {
+                    code: ErrorCode::NotOwner,
+                };
+            }
+            self.generation.fetch_add(1, Ordering::SeqCst) + 1
+        };
+        self.connect_expected(
+            caller,
+            ConnectionSource::Clash(profile),
+            engines,
+            settings,
+            &[],
+            ConnectAttempt {
+                generation: expected,
+                automatic: false,
+                plan,
+            },
+        )
+        .await
+    }
+    pub async fn policy_groups(&self, caller: &str, selection: Option<(&str, &str)>) -> Reply {
+        let Ok(_operation) = self.operation.try_lock() else {
+            return Reply::Failure {
+                code: ErrorCode::Busy,
+            };
+        };
+        let control = {
+            let state = self.inner.lock().await;
+            if state.owner.as_deref() != Some(caller) {
+                return Reply::Failure {
+                    code: ErrorCode::NotOwner,
+                };
+            }
+            state
+                .session
+                .as_ref()
+                .and_then(|session| session.policy_control())
+        };
+        let Some(control) = control else {
+            return Reply::Failure {
+                code: ErrorCode::Unsupported,
+            };
+        };
+        if let Some((group, member)) = selection {
+            if control.select(group, member).await.is_err() {
+                return Reply::Failure {
+                    code: ErrorCode::InvalidProfile,
+                };
+            }
+        }
+        match control.groups().await {
+            Ok(groups) => Reply::PolicyGroups { groups },
+            Err(_) => Reply::Failure {
+                code: ErrorCode::TunnelFailed,
+            },
+        }
+    }
     async fn connect_expected(
         &self,
         caller: &str,
-        profile: &moth_core::Profile,
+        source: ConnectionSource<'_>,
         engines: &moth_engine::EngineSet,
         policy: &moth_core::ConnectionSettings,
         candidates: &[moth_core::Profile],
@@ -397,6 +471,23 @@ impl Controller {
                 code: ErrorCode::Busy,
             };
         };
+        {
+            let guard = self.guard.lock().await;
+            if guard.as_ref().is_some_and(|guard| guard.owner != caller) {
+                return Reply::Failure {
+                    code: ErrorCode::NotOwner,
+                };
+            }
+            if guard.is_some()
+                && (matches!(source, ConnectionSource::Clash(_))
+                    || !guard_compatible(policy)
+                    || attempt.plan.lan())
+            {
+                return Reply::Failure {
+                    code: ErrorCode::InvalidProfile,
+                };
+            }
+        }
         // Keep the same kernel lease throughout startup. The engine retains a
         // second shared lease for the established session; an exclusive updater
         // cannot race a new Connect or interrupt another user's active tunnel.
@@ -424,13 +515,19 @@ impl Controller {
             }
             let failures = if automatic { state.failures } else { 0 };
             let mut backups = candidates.to_vec();
-            if !backups.iter().any(|p| p.id == profile.id) {
-                backups.push(profile.clone());
-            }
+            let profile = match source {
+                ConnectionSource::Profile(profile) => {
+                    if !backups.iter().any(|p| p.id == profile.id) {
+                        backups.push(profile.clone());
+                    }
+                    Some(profile.clone())
+                }
+                ConnectionSource::Clash(_) => None,
+            };
             *state = Connection {
                 plan: attempt.plan.clone(),
                 candidates: backups,
-                profile: Some(profile.clone()),
+                profile,
                 policy: policy.clone(),
                 failures,
                 phase: TunnelPhase::Connecting,
@@ -440,7 +537,7 @@ impl Controller {
             };
         }
         let result = tokio::select! {
-            result = tokio::time::timeout(Duration::from_secs(25), engines.connect_session(profile,policy,&attempt.plan)) => result.unwrap_or(Err(moth_engine::EngineError::Timeout)),
+            result = tokio::time::timeout(Duration::from_secs(25), engines.connect_session(source,policy,&attempt.plan)) => result.unwrap_or(Err(moth_engine::EngineError::Timeout)),
             _ = cancelled.changed() => Err(moth_engine::EngineError::Process),
         };
         let startup_error = match &result {
@@ -686,7 +783,7 @@ impl Controller {
             let _ = self
                 .connect_expected(
                     &owner,
-                    &profile,
+                    ConnectionSource::Profile(&profile),
                     engines,
                     &policy,
                     &candidates,

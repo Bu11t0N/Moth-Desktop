@@ -8,6 +8,7 @@ use uuid::Uuid;
 mod about;
 mod autostart;
 mod backup;
+mod clash;
 mod diagnostics;
 mod guard;
 #[cfg(all(any(windows, target_os = "linux"), debug_assertions))]
@@ -30,11 +31,13 @@ struct AppState {
     engine_status: Vec<moth_engine::EngineStatus>,
     probe_gate: tokio::sync::Mutex<()>,
     subscription_gate: tokio::sync::Mutex<()>,
+    policy_preview: Mutex<Option<clash::Staged>>,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Snapshot {
+    clash_policies: Vec<serde_json::Value>,
     profiles: Vec<ProfileSummary>,
     subscriptions: Vec<moth_core::SubscriptionSummary>,
     favorites: Vec<Uuid>,
@@ -48,6 +51,11 @@ struct Snapshot {
 }
 fn snapshot(library: &Library, engines: &[moth_engine::EngineStatus]) -> Snapshot {
     Snapshot {
+        clash_policies: library
+            .clash_policies
+            .iter()
+            .filter_map(|p| serde_json::to_value(p.summary()).ok())
+            .collect(),
         profiles: library.profiles.iter().map(|p| p.summary()).collect(),
         subscriptions: library.subscriptions.iter().map(|s| s.summary()).collect(),
         favorites: library.favorites.clone(),
@@ -84,6 +92,18 @@ fn mutate(
 }
 #[tauri::command]
 fn import_servers(text: String, state: tauri::State<AppState>) -> Result<Snapshot, String> {
+    if let Some(policy) = moth_core::inspect_clash_policy(&text).map_err(str::to_owned)? {
+        if policy.preview.issues.is_empty()
+            || !policy.preview.groups.is_empty()
+            || !policy.preview.rules.is_empty()
+            || !policy.preview.providers.is_empty()
+            || policy.preview.dns_mode.is_some()
+        {
+            return Err(
+                "Use the Clash profile preview to choose how to import this document".into(),
+            );
+        }
+    }
     let profiles = moth_core::import_links(&text).map_err(|e| e.to_string())?;
     mutate(&state, |library| {
         library.add(profiles);
@@ -457,7 +477,8 @@ fn main() {
                 app.path().resource_dir()?.join("engines")
             };
             let engines = moth_engine::EngineSet::new(engine_directory);
-            let engine_status = engines.status();
+            let mut engine_status = engines.status();
+            engine_status.push(engines.mihomo_status());
             app.manage(AppState {
                 autostart_gate: Mutex::new(()),
                 system_proxy_gate: Mutex::new(()),
@@ -468,6 +489,7 @@ fn main() {
                 engine_status,
                 probe_gate: tokio::sync::Mutex::new(()),
                 subscription_gate: tokio::sync::Mutex::new(()),
+                policy_preview: Mutex::new(None),
             });
             tray::setup(app)?;
             autostart::reconcile(app.handle());
@@ -482,6 +504,12 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             get_snapshot,
+            clash::preview_clash,
+            clash::apply_clash,
+            clash::refresh_clash,
+            clash::remove_clash,
+            clash::connect_clash,
+            clash::clash_groups,
             proxy::save_proxy_preferences,
             proxy::system_proxy_status,
             proxy::proxy_access,

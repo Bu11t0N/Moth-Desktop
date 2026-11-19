@@ -9,7 +9,7 @@ const en: Record<string, string> = {
   "Соединение, защита и поведение приложения": "Connection, protection and application behavior",
   "Статистика": "Traffic",
   "СТАТИСТИКА": "TRAFFIC",
-  "Для VPN нужна служба Moth с протоколом IPC 2 (0.3.1–0.3.5).": "VPN requires the Moth IPC 2 service (0.3.1–0.3.5); new features require 0.3.5.",
+  "Для VPN нужна служба Moth с протоколом IPC 2 (0.3.1–0.3.6).": "VPN requires the Moth IPC 2 service (0.3.1–0.3.6); new features require 0.3.6.",
   "Автовосстановление включается отдельно в настройках.": "Automatic recovery is enabled separately in settings.",
   "Туннель проверен · kill switch включён": "Tunnel verified · kill switch is on",
   "Туннель проверен · kill switch не подтверждён": "Tunnel verified · kill switch is unverified",

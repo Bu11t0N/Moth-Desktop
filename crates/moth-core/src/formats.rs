@@ -107,6 +107,11 @@ pub(crate) fn parse(input: &str) -> Result<Vec<Profile>> {
         }
         serde_yaml_ng::from_str(input).map_err(|_| "Некорректный Clash YAML")?
     };
+    if crate::clash_policy::has_clash_policy(&root) && root.get("proxies").is_some() {
+        return Err(
+            "Clash policy requires preview. Choose the full profile or import nodes explicitly",
+        );
+    }
     let mut rows = Vec::new();
     documents(&root, &mut rows, 0)?;
     if rows.is_empty() {
@@ -544,7 +549,7 @@ fn sing(v: &Value) -> Result<Profile> {
     }
     canonical(p)
 }
-fn clash(v: &Value) -> Result<Profile> {
+pub(crate) fn clash(v: &Value) -> Result<Profile> {
     if matches!(
         v["type"].as_str(),
         Some("hysteria2" | "hy2" | "tuic" | "anytls")

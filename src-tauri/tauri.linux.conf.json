@@ -23,7 +23,10 @@
     },
     "resources": {
       "../.local/engines/linux-x64/xray": "engines/xray",
-      "../.local/engines/linux-x64/sing-box": "engines/sing-box"
+      "../.local/engines/linux-x64/sing-box": "engines/sing-box",
+      "../.local/engines/linux-x64/mihomo": "engines/mihomo",
+      "../.local/engines/linux-x64/GeoIP.dat": "engines/GeoIP.dat",
+      "../.local/engines/linux-x64/GeoSite.dat": "engines/GeoSite.dat"
     }
   }
 }

@@ -53,6 +53,17 @@ pub enum Command {
         mode: moth_core::ConnectionMode,
         listener: Option<moth_core::PublicProxyOptions>,
     },
+    BeginClashPolicy {
+        document: String,
+        settings: Box<moth_core::ConnectionSettings>,
+        mode: moth_core::ConnectionMode,
+        listener: Option<moth_core::PublicProxyOptions>,
+    },
+    PolicyGroups {},
+    ChoosePolicyMember {
+        group: String,
+        member: String,
+    },
     ConnectionStatus {},
     ProxyAccess {},
     NativeRoute {},
@@ -80,12 +91,15 @@ impl Drop for ProfileLink {
 }
 impl Drop for Command {
     fn drop(&mut self) {
+        use zeroize::Zeroize;
+        if let Self::BeginClashPolicy { document, .. } = self {
+            document.zeroize();
+        }
         if let Self::Probe { link }
         | Self::Connect { link }
         | Self::ConnectWithPolicy { link, .. }
         | Self::BeginConnection { link, .. } = self
         {
-            use zeroize::Zeroize;
             link.zeroize();
         }
     }
@@ -120,6 +134,7 @@ pub enum Reply {
     ActiveProfile(Option<moth_core::ProfileSummary>),
     Guard(GuardState),
     Traffic(TrafficSnapshot),
+    PolicyGroups { groups: Vec<moth_core::GroupState> },
     Failure { code: ErrorCode },
 }
 

@@ -1,5 +1,7 @@
 //! UI-independent Moth domain model. No Tauri, OS calls or network access.
 mod backup;
+mod clash_policy;
+pub use clash_policy::*;
 mod history;
 mod proxy;
 pub use history::*;

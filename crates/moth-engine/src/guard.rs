@@ -52,7 +52,8 @@ impl Policy {
             || self.endpoints.is_empty()
             || self.endpoints.len() > 32
             || self.endpoints.iter().any(|e| {
-                e.host.is_empty()
+                e.engine == crate::Engine::Mihomo
+                    || e.host.is_empty()
                     || e.host.len() > 253
                     || e.host.chars().any(char::is_control)
                     || e.port == 0

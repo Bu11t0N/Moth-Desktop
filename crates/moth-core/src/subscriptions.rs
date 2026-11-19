@@ -275,6 +275,13 @@ impl Library {
         self.profiles.retain(|p| !ids.contains(&p.id));
         self.favorites.retain(|p| !ids.contains(p));
         self.subscriptions.retain(|s| s.id != id);
+        for profile in &mut self.clash_policies {
+            if profile.subscription == Some(id) {
+                profile.subscription = None;
+                profile.refresh_seconds = None;
+                profile.original = profile.resolved.clone();
+            }
+        }
         if self.selected.is_some_and(|p| ids.contains(&p)) {
             self.selected = self.profiles.first().map(|p| p.id);
         }

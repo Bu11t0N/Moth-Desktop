@@ -40,6 +40,10 @@ try {
     if($settingsCheck.ExitCode -ne 0){throw 'Ordinary-user login startup / OS proxy acceptance failed'}
     $settingsCheck.Dispose()
     & (Join-Path $PSScriptRoot 'test-service-tunnel.ps1') -Credential $credential -DisposableVm:$DisposableVm
+    $clashExample=Join-Path $repo 'target/debug/examples/clash_policy_acceptance.exe'
+    $clashCheck=Start-Process -FilePath $clashExample -Credential $credential -LoadUserProfile -WorkingDirectory $env:SystemRoot -WindowStyle Hidden -Wait -PassThru
+    if($clashCheck.ExitCode -ne 0){throw 'Ordinary-user Clash TUN, DNS or group selection failed'}
+    $clashCheck.Dispose()
 } finally {
     if ($createdUser) { Remove-LocalUser -Name $testUser }
     if ($installed) { & (Join-Path $PSScriptRoot 'Service.ps1') -Action Remove }

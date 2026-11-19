@@ -98,6 +98,16 @@ pub enum Session {
     Proxy(ProxySession),
 }
 impl Session {
+    pub fn allows_private_downloads(&self) -> bool {
+        self.policy_control()
+            .is_none_or(|control| control.allows_downloads)
+    }
+    pub fn policy_control(&self) -> Option<Arc<crate::policy::Control>> {
+        match self {
+            Self::Tun(s) => s.policy_control.clone(),
+            Self::Proxy(s) => s.policy_control.clone(),
+        }
+    }
     pub fn telemetry(&self) -> Option<Arc<telemetry::Api>> {
         match self {
             Self::Tun(s) => s.telemetry(),
@@ -130,6 +140,7 @@ impl Session {
     }
 }
 pub struct ProxySession {
+    policy_control: Option<Arc<crate::policy::Control>>,
     telemetry: Option<Arc<telemetry::Api>>,
     endpoint: SocketAddr,
     private: moth_ipc::DownloadProxy,
@@ -154,31 +165,31 @@ impl ProxySession {
 impl EngineSet {
     pub async fn connect_session(
         &self,
-        profile: &Profile,
+        source: ConnectionSource<'_>,
         policy: &moth_core::ConnectionSettings,
         plan: &SessionPlan,
     ) -> Result<Session, EngineError> {
         if plan.mode == ConnectionMode::Tun {
-            self.connect_shared(profile, policy, plan.public.as_ref())
+            self.connect_shared(source, policy, plan.public.as_ref())
                 .await
                 .map(Session::Tun)
         } else {
-            self.connect_proxy(profile, policy, plan)
+            self.connect_proxy(source, policy, plan)
                 .await
                 .map(Session::Proxy)
         }
     }
     async fn connect_proxy(
         &self,
-        profile: &Profile,
+        source: ConnectionSource<'_>,
         policy: &moth_core::ConnectionSettings,
         plan: &SessionPlan,
     ) -> Result<ProxySession, EngineError> {
         let maintenance =
             moth_ipc::maintenance::TunnelLease::acquire().map_err(|_| EngineError::Maintenance)?;
-        let endpoint = guard::resolve(profile).await?;
+        let endpoint = source.address().await?;
         self.connect_proxy_inner(
-            profile,
+            source,
             policy,
             plan,
             Some(maintenance),
@@ -189,7 +200,7 @@ impl EngineSet {
     }
     pub(super) async fn connect_proxy_inner(
         &self,
-        profile: &Profile,
+        source: ConnectionSource<'_>,
         policy: &moth_core::ConnectionSettings,
         plan: &SessionPlan,
         maintenance: Option<moth_ipc::maintenance::TunnelLease>,
@@ -214,19 +225,21 @@ impl EngineSet {
             username: Uuid::new_v4().to_string(),
             password: Uuid::new_v4().to_string(),
         };
-        let (upstream_engine, mut upstream) = crate::upstream::config(profile, Some(&bridge))?;
         #[cfg(windows)]
-        let interface = Some(crate::tunnel::upstream_interface(endpoint.ip())?);
+        let interface = if matches!(source, ConnectionSource::Profile(_)) {
+            Some(crate::tunnel::upstream_interface(endpoint.ip())?)
+        } else {
+            None
+        };
         #[cfg(target_os = "linux")]
         let interface: Option<String> = None;
-        crate::upstream::pin(
-            &mut upstream,
-            upstream_engine,
-            profile,
-            endpoint.ip(),
+        let prepared = source.prepare(
+            &bridge,
+            endpoint,
             interface.as_deref(),
             cfg!(target_os = "linux") && maintenance.is_some(),
-        );
+            policy,
+        )?;
         let mut config = moth_core::sing_box_tun_policy(&bridge, policy)
             .map_err(|_| EngineError::InvalidConfig)?;
         // Proxy routing is force-upstream. TUN-only per-app/DNS/capture policy
@@ -247,15 +260,22 @@ impl EngineSet {
             .remove("dns");
         let public = plan.public.as_ref().ok_or(EngineError::InvalidConfig)?;
         let public_reservation = public.add(&mut config)?;
-        self.validate(upstream_engine, &upstream).await?;
+        prepared.configure_capture(&mut config, false)?;
+        if matches!(source, ConnectionSource::Clash(_)) && !policy.ipv6 {
+            config["route"]["rules"]
+                .as_array_mut()
+                .ok_or(EngineError::InvalidConfig)?
+                .insert(0, serde_json::json!({"ip_version":6,"action":"reject"}));
+        }
         let (telemetry, telemetry_reservation) = self.attach_telemetry(&mut config).await?;
         drop(reservation);
-        let upstream = self.spawn_config(upstream_engine, &upstream, false).await?;
+        let (upstream, policy_control) = prepared.start(self, maintenance.is_some()).await?;
         drop(private_reservation);
         drop(public_reservation);
         drop(telemetry_reservation);
         let listener = self.spawn_config(Engine::SingBox, &config, false).await?;
         let mut session = ProxySession {
+            policy_control,
             telemetry,
             endpoint,
             private,

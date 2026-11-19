@@ -1,6 +1,15 @@
 # Status — 2026-11-17
 
-## 0.3.5 in development
+## 0.3.6 Clash policy integration
+
+Policy preview, protected storage, staged provider and subscription refresh,
+pinned Mihomo execution, live group selection and TUN capture are implemented.
+See [supported profiles](CLASH.md). Pinned local fixtures verify live domain
+routing, rule sets, geo categories, fake-IP, chaining and fallback to a provider
+exit. The release workflow checks the exact Windows and Ubuntu revision
+before production signing. Real paid subscriptions are outside this matrix.
+
+## 0.3.5 historical development record
 
 - Persistent egress guard groundwork uses an isolated WFP provider/sublayer on Windows and an owned nftables table on Ubuntu. Typed owner controls, pinned endpoint cache, explicit recovery CLI and early Ubuntu restore unit are implemented. Disconnect/Exit retain the opt-in block; uninstall explicitly releases only Moth rules. Direct rules and application splitting are rejected while enabled.
 - Local Windows compile/Clippy, Linux service cross-check and targeted policy/confirmation/English UI tests pass. Kernel filtering, crash/reboot behavior, upgrade/uninstall and absence of leaks are **not yet accepted**. No persistent/power-loss protection claim is made from these local checks.

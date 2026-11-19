@@ -164,7 +164,7 @@ async fn real_vless_roundtrip_and_wrong_credential_failure() {
     .unwrap();
     let mut proxy_session = engines()
         .connect_proxy_inner(
-            &profile,
+            ConnectionSource::Profile(&profile),
             &Default::default(),
             &plan,
             None,

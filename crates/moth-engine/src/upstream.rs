@@ -1,4 +1,76 @@
 use super::*;
+use moth_core::{ClashPolicy, ConnectionSettings};
+use std::{net::SocketAddr, sync::Arc};
+
+#[derive(Clone, Copy)]
+pub enum ConnectionSource<'a> {
+    Profile(&'a Profile),
+    Clash(&'a ClashPolicy),
+}
+impl ConnectionSource<'_> {
+    pub(super) async fn address(self) -> Result<SocketAddr, EngineError> {
+        match self {
+            Self::Profile(p) => crate::guard::resolve(p).await,
+            Self::Clash(_) if crate::guard::load()?.is_some() => Err(EngineError::InvalidConfig),
+            // A numeric route lookup identifies the default egress interface.
+            // Mihomo resolves its actual upstreams under the imported DNS policy.
+            Self::Clash(_) => Ok(SocketAddr::from(([1, 1, 1, 1], 443))),
+        }
+    }
+    pub(super) fn prepare(
+        self,
+        bridge: &LocalBridge,
+        endpoint: SocketAddr,
+        interface: Option<&str>,
+        mark: bool,
+        settings: &ConnectionSettings,
+    ) -> Result<Prepared, EngineError> {
+        match self {
+            Self::Profile(p) => {
+                let (engine, mut config) = config(p, Some(bridge))?;
+                pin(&mut config, engine, p, endpoint.ip(), interface, mark);
+                Ok(Prepared::Legacy(engine, config))
+            }
+            Self::Clash(profile) => {
+                policy::Prepared::new(profile, settings, bridge, interface, mark)
+                    .map(|p| Prepared::Policy(Box::new(p)))
+            }
+        }
+    }
+}
+
+pub(super) enum Prepared {
+    Legacy(Engine, serde_json::Value),
+    Policy(Box<policy::Prepared>),
+}
+impl Prepared {
+    pub(super) fn configure_capture(
+        &self,
+        config: &mut serde_json::Value,
+        dns: bool,
+    ) -> Result<(), EngineError> {
+        if let Self::Policy(policy) = self {
+            policy.configure_capture(config, dns)?;
+        }
+        Ok(())
+    }
+    pub(super) async fn start(
+        self,
+        set: &EngineSet,
+        protected: bool,
+    ) -> Result<(EngineProcess, Option<Arc<policy::Control>>), EngineError> {
+        match self {
+            Self::Legacy(engine, config) => {
+                set.validate(engine, &config).await?;
+                Ok((set.spawn_config(engine, &config, false).await?, None))
+            }
+            Self::Policy(policy) => policy
+                .start(set, protected)
+                .await
+                .map(|(process, control)| (process, Some(control))),
+        }
+    }
+}
 
 pub fn profile_engine(profile: &Profile) -> Engine {
     if profile.protocol.uses_sing_box() {

@@ -5,9 +5,12 @@ mod job;
 mod upstream;
 pub use upstream::profile_engine;
 #[cfg(any(windows, target_os = "linux"))]
+mod policy;
+#[cfg(any(windows, target_os = "linux"))]
 mod proxy;
 #[cfg(any(windows, target_os = "linux"))]
 pub use proxy::{Session, SessionPlan};
+pub use upstream::ConnectionSource;
 pub mod telemetry;
 #[cfg(windows)]
 mod tunnel;
@@ -164,12 +167,14 @@ pub enum Engine {
     #[default]
     Xray,
     SingBox,
+    Mihomo,
 }
 impl Engine {
     fn name(self) -> &'static str {
         match self {
             Self::Xray => "xray",
             Self::SingBox => "sing-box",
+            Self::Mihomo => "mihomo",
         }
     }
 }
@@ -251,13 +256,22 @@ impl EngineSet {
     /// Every launch verifies the executable against a pin baked into this binary.
     /// Runtime engine directories are never accepted from the webview.
     pub fn verified_path(&self, engine: Engine) -> Result<PathBuf, EngineError> {
+        if engine == Engine::Mihomo {
+            return self.verified_mihomo();
+        }
         let lock = Self::lock()?;
         let asset = lock
             .engines
             .get(engine.name())
             .and_then(|p| p.platforms.get(Self::platform().ok()?))
             .ok_or(EngineError::Unsupported)?;
-        let path = self.directory.join(&asset.file);
+        self.verify_asset(&asset.file, &asset.binary_sha256)
+    }
+    fn verify_asset(&self, name: &str, expected: &str) -> Result<PathBuf, EngineError> {
+        let path = self.directory.join(name);
+        if !std::fs::symlink_metadata(&path).is_ok_and(|m| m.is_file()) {
+            return Err(EngineError::Missing);
+        }
         let mut file = std::fs::File::open(&path).map_err(|_| EngineError::Missing)?;
         if file.metadata().map_err(|_| EngineError::Integrity)?.len() > 128 * 1024 * 1024 {
             return Err(EngineError::Integrity);
@@ -271,7 +285,7 @@ impl EngineSet {
             }
             hash.update(&buf[..n]);
         }
-        if format!("{:x}", hash.finalize()) != asset.binary_sha256 {
+        if format!("{:x}", hash.finalize()) != expected {
             return Err(EngineError::Integrity);
         }
         std::fs::canonicalize(path).map_err(|_| EngineError::Missing)
@@ -300,6 +314,15 @@ impl EngineSet {
         engine: Engine,
         config: &serde_json::Value,
         check: bool,
+    ) -> Result<EngineProcess, EngineError> {
+        self.spawn_config_at(engine, config, check, None).await
+    }
+    async fn spawn_config_at(
+        &self,
+        engine: Engine,
+        config: &serde_json::Value,
+        check: bool,
+        home: Option<&Path>,
     ) -> Result<EngineProcess, EngineError> {
         let executable = self.verified_path(engine)?;
         let mut cmd = Command::new(&executable);
@@ -336,6 +359,13 @@ impl EngineSet {
             Engine::SingBox => {
                 cmd.args([if check { "check" } else { "run" }, "-c", "stdin"]);
             }
+            Engine::Mihomo => {
+                cmd.args(["-f", "-", "-d"])
+                    .arg(home.ok_or(EngineError::InvalidConfig)?);
+                if check {
+                    cmd.arg("-t");
+                }
+            }
         }
         #[cfg(windows)]
         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW; no console flashes.
@@ -367,7 +397,11 @@ impl EngineSet {
         let mut stdin = child.stdin.take().ok_or(EngineError::Process)?;
         let bytes =
             Zeroizing::new(serde_json::to_vec(config).map_err(|_| EngineError::InvalidConfig)?);
-        let mut process = EngineProcess { child, _job: job };
+        let mut process = EngineProcess {
+            child,
+            _job: job,
+            _data: None,
+        };
         if timeout(Duration::from_secs(5), stdin.write_all(&bytes))
             .await
             .map_err(|_| EngineError::Timeout)?
@@ -507,6 +541,7 @@ pub struct ProbeResult {
 struct EngineProcess {
     child: Child,
     _job: ProcessJob,
+    _data: Option<tempfile::TempDir>,
 }
 impl EngineProcess {
     async fn stop(&mut self) -> Result<(), EngineError> {

@@ -3,12 +3,10 @@
 Windows-first desktop companion to [Moth for Android](https://github.com/Bu11t0N/Moth).
 Rust domain/platform layers and a Tauri 2 + TypeScript interface for Windows x64 and Ubuntu 24.04 x64.
 
-**0.3.5 source candidate:** persistent network block, measured activity, diagnostics,
-login startup, authenticated proxy/LAN mode and additional typed protocols.
-[Release packages](https://github.com/Bu11t0N/Moth-Desktop/releases/tag/v0.3.5)
-are published only after native Windows/Linux and signing gates pass.
-[Validation evidence and limits](docs/STATUS.md).
-The previous published release is [0.3.4](https://github.com/Bu11t0N/Moth-Desktop/releases/tag/v0.3.4).
+**0.3.6** adds preview and execution of supported Clash/Mihomo policies.
+See [Clash profiles and limitations](docs/CLASH.md) and the
+[0.3.6 release packages](https://github.com/Bu11t0N/Moth-Desktop/releases/tag/v0.3.6).
+The previous release is [0.3.5](https://github.com/Bu11t0N/Moth-Desktop/releases/tag/v0.3.5).
 
 ## Implemented
 

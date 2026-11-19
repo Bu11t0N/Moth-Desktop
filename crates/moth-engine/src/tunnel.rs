@@ -9,6 +9,7 @@ use windows_sys::Win32::{
 /// Owns both engines and their Windows jobs. Dropping it tears down the private
 /// Wintun adapter/routes and the dynamic WFP session, including on cancellation.
 pub struct Tunnel {
+    pub(super) policy_control: Option<std::sync::Arc<crate::policy::Control>>,
     telemetry: Option<std::sync::Arc<crate::telemetry::Api>>,
     endpoint: SocketAddr,
     subscription_proxy: moth_ipc::DownloadProxy,
@@ -86,11 +87,12 @@ impl EngineSet {
         profile: &Profile,
         policy: &moth_core::ConnectionSettings,
     ) -> Result<Tunnel, EngineError> {
-        self.connect_shared(profile, policy, None).await
+        self.connect_shared(ConnectionSource::Profile(profile), policy, None)
+            .await
     }
     pub(super) async fn connect_shared(
         &self,
-        profile: &Profile,
+        source: ConnectionSource<'_>,
         policy: &moth_core::ConnectionSettings,
         public: Option<&crate::proxy::PublicListener>,
     ) -> Result<Tunnel, EngineError> {
@@ -98,7 +100,7 @@ impl EngineSet {
         let lease =
             moth_ipc::maintenance::TunnelLease::acquire().map_err(|_| EngineError::Maintenance)?;
         let mut tunnel = self
-            .connect_checked_policy(profile, &policy.health_url, policy, public)
+            .connect_checked_policy(source, &policy.health_url, policy, public)
             .await?;
         tunnel._maintenance = Some(lease);
         Ok(tunnel)
@@ -110,7 +112,7 @@ impl EngineSet {
         check_url: &str,
     ) -> Result<Tunnel, EngineError> {
         self.connect_checked_policy(
-            profile,
+            ConnectionSource::Profile(profile),
             check_url,
             &moth_core::ConnectionSettings::default(),
             None,
@@ -119,14 +121,14 @@ impl EngineSet {
     }
     async fn connect_checked_policy(
         &self,
-        profile: &Profile,
+        source: ConnectionSource<'_>,
         check_url: &str,
         policy: &moth_core::ConnectionSettings,
         public: Option<&crate::proxy::PublicListener>,
     ) -> Result<Tunnel, EngineError> {
         // Resolve the server before changing DNS/routes, then pin this connection
         // to one numeric address. TLS SNI/Reality/WS host remain unchanged.
-        let address = guard::resolve(profile).await?;
+        let address = source.address().await?;
         let interface = upstream_interface(address.ip())?;
         let reservation =
             std::net::TcpListener::bind("127.0.0.1:0").map_err(|_| EngineError::Process)?;
@@ -147,25 +149,23 @@ impl EngineSet {
             username: Uuid::new_v4().to_string(),
             password: Uuid::new_v4().to_string(),
         };
-        let (upstream_engine, mut config) = crate::upstream::config(profile, Some(&bridge))?;
-        crate::upstream::pin(
-            &mut config,
-            upstream_engine,
-            profile,
-            address.ip(),
+        let prepared = source.prepare(
+            &bridge,
+            address,
             Some(&interface),
             cfg!(target_os = "linux"),
-        );
+            policy,
+        )?;
         let mut tun_config = moth_core::sing_box_tun_policy(&bridge, policy)
             .map_err(|_| EngineError::InvalidConfig)?;
         tun_config["outbounds"][1]["bind_interface"] = serde_json::json!(interface);
         protect_verifier(&mut tun_config, policy)?;
         tun_config["inbounds"].as_array_mut().ok_or(EngineError::Process)?.push(serde_json::json!({"type":"mixed","tag":"subscription-in","listen":"127.0.0.1","listen_port":subscription_proxy.port,"users":[{"username":subscription_proxy.username,"password":subscription_proxy.password}]}));
         let public_reservation = public.map(|p| p.add(&mut tun_config)).transpose()?;
-        self.validate(upstream_engine, &config).await?;
+        prepared.configure_capture(&mut tun_config, true)?;
         let (telemetry, telemetry_reservation) = self.attach_telemetry(&mut tun_config).await?;
         drop(reservation);
-        let mut upstream = self.spawn_config(upstream_engine, &config, false).await?;
+        let (mut upstream, policy_control) = prepared.start(self, true).await?;
         let start = Instant::now();
         loop {
             if upstream
@@ -199,6 +199,7 @@ impl EngineSet {
             .spawn_config(Engine::SingBox, &tun_config, false)
             .await?;
         let mut session = Tunnel {
+            policy_control,
             telemetry,
             endpoint: address,
             subscription_proxy,
@@ -374,7 +375,7 @@ mod acceptance {
                     ..Default::default()
                 };
                 engines
-                    .connect_checked_policy(&profile, url, &policy, None)
+                    .connect_checked_policy(ConnectionSource::Profile(&profile), url, &policy, None)
                     .await
                     .unwrap()
             } else {

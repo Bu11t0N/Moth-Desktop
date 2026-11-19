@@ -1,11 +1,1 @@
-Moth Desktop 0.3.5
-
-Optional persistent WFP/nftables block with explicit release/recovery; Disconnect and Exit retain it. Direct/per-app bypass and LAN sharing cannot be combined with the block. No universal cold-boot or sudden power-loss guarantee is claimed.
-
-Measured engine traffic, session time, connection summaries, optional bounded private history, diagnostics with clear/preview/export, and completed Settings/Diagnostics/About/licenses. Login startup is separate from automatic connection.
-
-Authenticated HTTP/SOCKS proxy-only mode, optional TUN sharing and private LAN allowlists. Optional per-user Windows/GNOME OS proxy changes have protected ownership recovery. Proxy mode serves configured apps, without system TUN. After a crash, restore/check OS proxy settings before uninstalling. External edits are preserved; manual OS recovery remains available.
-
-Hysteria2/salamander, TUIC v5 and AnyTLS supported subsets use pinned engines with certificate verification. Unsupported options fail explicitly; no full Android or Clash/Mihomo parity. Existing subscriptions, consent, library, routing, recovery, backups and themes remain.
-
-Install the complete package for new service features. Windows x64 requires WebView2; Linux support is Ubuntu 24.04 x64 in the documented configuration. Production updater signatures and protected storage are unchanged; no Windows Authenticode claim.
+Moth Desktop 0.3.6 adds full-policy preview and import for supported Clash YAML, named proxy groups, providers, rule sets, DNS and dialer-proxy chains via pinned Mihomo. The owner can select a group member while connected. Failed refreshes preserve the last validated profile. Clash policy mode requires the kill switch to be off. The complete 0.3.6 package is required for these features. See the release notes and docs/CLASH.md for supported fields and limitations.

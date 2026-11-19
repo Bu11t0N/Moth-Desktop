@@ -17,7 +17,7 @@ $env:ComSpec = [IO.Path]::Combine($env:SystemRoot,'System32\cmd.exe')
 if ([IntPtr]::Size -ne 8) { throw '64-bit PowerShell is required for Moth Desktop maintenance.' }
 $serviceName = 'MothDesktopService'
 $installRoot = Join-Path $env:ProgramFiles 'Moth Desktop'
-$expectedVersion = '0.3.5'
+$expectedVersion = '0.3.6'
 trap {
     # The graphical installer uses a protected temporary payload directory.
     # Keep a bounded, credential-free reason there when its silent run fails.
@@ -89,11 +89,11 @@ function Read-Payload([string]$Directory, [string]$Name) {
     foreach ($entry in $manifest.files) {
         $relative = [string]$entry.path
         # Fixed executable names and notice files only; no arbitrary destination paths.
-        if ($relative -notmatch '^(moth-desktop\.exe|moth-service\.exe|moth-maintenance\.exe|Service\.ps1|Uninstall\.exe|README\.txt|engines/(xray|sing-box)\.exe|notices/[A-Za-z0-9_./-]+)$' -or
+        if ($relative -notmatch '^(moth-desktop\.exe|moth-service\.exe|moth-maintenance\.exe|Service\.ps1|Uninstall\.exe|README\.txt|engines/((xray|sing-box|mihomo)\.exe|Geo(IP|Site)\.dat)|notices/[A-Za-z0-9_./-]+)$' -or
             $relative.Contains('..') -or $entry.sha256 -notmatch '^[a-f0-9]{64}$' -or $seen.ContainsKey($relative)) { throw 'Invalid desktop package entry.' }
         $seen[$relative] = $true
     }
-    foreach ($required in @('moth-desktop.exe','moth-service.exe','moth-maintenance.exe','Service.ps1','engines/xray.exe','engines/sing-box.exe')) {
+    foreach ($required in @('moth-desktop.exe','moth-service.exe','moth-maintenance.exe','Service.ps1','engines/xray.exe','engines/sing-box.exe','engines/mihomo.exe','engines/GeoIP.dat','engines/GeoSite.dat')) {
         if (-not $seen.ContainsKey($required)) { throw 'Desktop package is incomplete.' }
     }
     return $manifest
@@ -171,6 +171,9 @@ $client = Join-Path $package 'moth-service.exe'
 $hashes = @{
     'engines\xray.exe' = 'c77a00eb84fb93ae044c2d771a1cabcc033b81e487253fbc35b12df6879c1e15'
     'engines\sing-box.exe' = 'fc7b65219abe8a0166d0b4891a2f7cabcbcc13b3adcf89e6d5913743a67aba10'
+    'engines\mihomo.exe' = 'a4fbf2b8bc2b5416ce2d0d392ac59f2e0a234ea4fcf635b66bd21e62ea9641b9'
+    'engines\GeoIP.dat' = 'eedb24b3b9fcba27e06b92c0428dab90d9496083091ae4cf39e11387fd99d0e2'
+    'engines\GeoSite.dat' = 'a033da583af17f15c9743f0b29aa5c073e9c1b8018a99ab4e69bc9ed5248a086'
 }
 if (-not (Test-Path -LiteralPath $client -PathType Leaf)) { throw 'Package service executable missing.' }
 $version = & $client --version

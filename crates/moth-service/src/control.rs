@@ -35,6 +35,46 @@ pub async fn dispatch(
             }
             Command::TunnelStatus {} => tunnel.status(caller).await,
             Command::ConnectionStatus {} => tunnel.connection_status(caller).await,
+            Command::PolicyGroups {} if !development => tunnel.policy_groups(caller, None).await,
+            Command::ChoosePolicyMember { group, member }
+                if !development && group.len() <= 160 && member.len() <= 160 =>
+            {
+                tunnel.policy_groups(caller, Some((group, member))).await
+            }
+            Command::BeginClashPolicy {
+                document,
+                settings,
+                mode,
+                listener,
+            } if !development => {
+                let policy = moth_core::inspect_clash_policy(document)
+                    .ok()
+                    .flatten()
+                    .and_then(|p| p.policy);
+                match (
+                    policy,
+                    moth_engine::SessionPlan::new(*mode, listener.clone()),
+                ) {
+                    (Some(policy), Ok(plan)) => {
+                        let reply = tunnel
+                            .connect_clash(caller, &policy, engines, settings, plan)
+                            .await;
+                        if matches!(reply, Reply::Tunnel(_)) {
+                            tunnel.connection_status(caller).await
+                        } else {
+                            reply
+                        }
+                    }
+                    _ => Reply::Failure {
+                        code: ErrorCode::InvalidProfile,
+                    },
+                }
+            }
+            Command::PolicyGroups {}
+            | Command::ChoosePolicyMember { .. }
+            | Command::BeginClashPolicy { .. } => Reply::Failure {
+                code: ErrorCode::Unsupported,
+            },
             Command::ProxyAccess {} if !development => tunnel.proxy_access(caller).await,
             Command::NativeRoute {} if !development => tunnel.native_route(caller).await,
             Command::ProxyAccess {} | Command::NativeRoute {} => Reply::Failure {

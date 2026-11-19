@@ -166,6 +166,9 @@ pub fn read_backup(text: &str, password: &str) -> Result<DecodedBackup, &'static
         source.generation = source.generation.saturating_add(1);
         source.last_attempt = None;
     }
+    for policy in &mut decoded.library.clash_policies {
+        policy.refresh_seconds = None;
+    }
     decoded.warnings.push("HWID не переносится; передача данных устройства, расписание и автоподключение выключены до явного выбора".into());
     decoded.library.validate()?;
     for profile in &decoded.library.profiles {
@@ -388,7 +391,9 @@ pub fn merge_backup(
         ids.insert(old, profile.id);
         merged.profiles.push(profile);
     }
+    let mut source_ids = std::collections::BTreeMap::new();
     for mut source in restored.subscriptions {
+        let original_id = source.id;
         source.profiles = source
             .profiles
             .iter()
@@ -399,6 +404,7 @@ pub fn merge_backup(
             .iter_mut()
             .find(|s| s.url == source.url)
         {
+            source_ids.insert(original_id, existing.id);
             for id in source.profiles {
                 if !existing.profiles.contains(&id) {
                     existing.profiles.push(id);
@@ -412,8 +418,28 @@ pub fn merge_backup(
             source
                 .profiles
                 .retain(|id| !merged.subscriptions.iter().any(|s| s.profiles.contains(id)));
+            source_ids.insert(original_id, source.id);
             merged.subscriptions.push(source);
         }
+    }
+    for mut policy in restored.clash_policies {
+        policy.subscription = policy
+            .subscription
+            .and_then(|id| source_ids.get(&id).copied());
+        if merged.clash_policies.iter().any(|existing| {
+            existing.subscription == policy.subscription
+                && (policy.subscription.is_some() || existing.original == policy.original)
+        }) {
+            continue;
+        }
+        if merged
+            .clash_policies
+            .iter()
+            .any(|existing| existing.id == policy.id)
+        {
+            policy.id = Uuid::new_v4();
+        }
+        merged.clash_policies.push(policy);
     }
     for id in restored.favorites.iter().filter_map(|id| ids.get(id)) {
         if !merged.favorites.contains(id) {
